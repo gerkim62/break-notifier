@@ -1,236 +1,397 @@
-import {settingsWithDefaults,localDate,buildDaySegments,dayForDate} from './companion-core.mjs';
+import {SCREENS} from './design-screens.mjs';
+import {weekPicker,journey} from './schedule-components.mjs';
 import {icon} from './ui-icons.mjs';
+import {settingsWithDefaults,localDate,localTime,buildDaySegments,contextForDay,formatDuration,dayForDate,eventBounds,wallTimeToEpoch,segmentProgress,alertColor} from './companion-core.mjs';
 
-const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
-const app=$('#app');
+const $=(selector,root=document)=>root.querySelector(selector);
+const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const send=message=>new Promise((resolve,reject)=>chrome.runtime.sendMessage(message,response=>{
- if(chrome.runtime.lastError)reject(Error('Background worker unavailable'));else resolve(response);
+ const error=chrome.runtime.lastError;if(error)reject(new Error('Background worker unavailable'));else resolve(response);
 }));
-const h=(tag,cls='',text)=>{const e=document.createElement(tag);e.className=cls;if(text!==undefined)e.textContent=text;return e;};
-let state=null,selectedDate=null,mode='schedule',filter='special',busy=false,loginBusy=false,toastTimer;
-let pendingSettings={},settingRevisions={},saveQueue=Promise.resolve(),settingsView=0;
-const settings=()=>settingsWithDefaults({...state?.settings,...pendingSettings});
+const app=$('#app'),style=$('#visual-css');
+let state=null,selectedDate=null,filter='special',mode='schedule',busy=false,loginBusy=false,activeVariant='',activeDate='',statusTimer=null;
+let lastInfoOpen=false;
+let retainedPicker=null;
+const settings=()=>settingsWithDefaults(state?.settings);
 const today=()=>localDate(Date.now(),settings().timeZone);
-const addDays=(date,n)=>{const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
-const weekStart=date=>{const d=new Date(date+'T12:00:00Z');return addDays(date,-((d.getUTCDay()+6)%7));};
-const cachedWeek=date=>{const start=weekStart(date);return state?.week?.weekStart===start?state.week:state?.weeks?.[start]??null;};
-const selectedDay=()=>dayForDate(cachedWeek(selectedDate),selectedDate);
-const dateLabel=(date,options)=>new Intl.DateTimeFormat('en-GB',{timeZone:'UTC',...options}).format(new Date(date+'T12:00:00Z'));
-const stamp=(epoch,options={})=>new Intl.DateTimeFormat('en-US',{timeZone:settings().timeZone,hour:'numeric',minute:'2-digit',...options}).format(epoch);
-const duration=ms=>{const m=Math.max(0,Math.round(ms/60000));return m<60?m+' min':Math.floor(m/60)+'h'+(m%60?' '+String(m%60).padStart(2,'0')+'m':'');};
-const segmentsFor=day=>buildDaySegments(day,settings());
-const specials=day=>segmentsFor(day).filter(s=>!['queue','work','shift'].includes(s.type));
-const summaryFor=day=>{const b=specials(day).filter(s=>s.type==='break');return {count:b.length,minutes:Math.round(b.reduce((n,s)=>n+s.end-s.start,0)/60000)};};
-const isMeal=s=>s.stateType===5||/lunch|meal/i.test(s.name);
-// Keep rail/card nodes between ticks so the reference's transitions can travel
-// continuously, and pointer/focus targets survive clock updates.
-function reconcileChildren(target,next){
- for(let i=0;i<next.childNodes.length;i++){
-  const incoming=next.childNodes[i],old=target.childNodes[i];
-  if(!old){target.append(incoming.cloneNode(true));continue;}
-  if(old.nodeType!==incoming.nodeType||old.nodeName!==incoming.nodeName){old.replaceWith(incoming.cloneNode(true));continue;}
-  if(old.nodeType===Node.TEXT_NODE){if(old.data!==incoming.data)old.data=incoming.data;continue;}
-  for(const attr of [...old.attributes])if(!incoming.hasAttribute(attr.name))old.removeAttribute(attr.name);
-  for(const attr of incoming.attributes)if(old.getAttribute(attr.name)!==attr.value)old.setAttribute(attr.name,attr.value);
-  reconcileChildren(old,incoming);
+const weekStart=date=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10);};
+const week=()=>state?.week?.weekStart===weekStart(today())?state.week:null;
+const selectedWeek=()=>{const start=weekStart(selectedDate??today());return state?.week?.weekStart===start?state.week:state?.weeks?.[start]??null;};
+const h=(tag,className='',text)=>{const element=document.createElement(tag);if(className)element.className=className;if(text!==undefined)element.textContent=text;return element;};
+const stamp=(epoch,options={})=>new Intl.DateTimeFormat('en-US',{timeZone:settings().timeZone,hour:'numeric',minute:'2-digit',...options}).format(new Date(epoch));
+const shortDay=date=>new Intl.DateTimeFormat('en-US',{timeZone:'UTC',weekday:'short'}).format(new Date(`${date}T12:00:00Z`));
+const fmtRange=(start,end)=>{const s=stamp(start),e=stamp(end);const match=s.match(/([AP]M)$/);return match&&e.endsWith(match[1])?`${s.replace(/ [AP]M$/,'')} – ${e}`:`${s} – ${e}`;};
+const length=ms=>formatDuration(ms).replace(/\bminutes\b/g,'min');
+const typeLabel=type=>({queue:'Queue',break:'Break',exception:'Event',time_off:'Time off',work:'Work',marked:'Marked',shift:'Shift',day_off:'Day Off',other:'Other'})[type]??'Event';
+const setText=(selector,value)=>{const node=$(selector,app);if(node)node.textContent=value;return node;};
+function updateFirstText(node,value){if(!node)return;const text=[...node.childNodes].find(n=>n.nodeType===Node.TEXT_NODE);if(text)text.textContent=value;else node.prepend(document.createTextNode(value));}
+function determineVariant(){
+ const w=selectedWeek();if(!w)return weekStart(selectedDate??today())===weekStart(today())?'signed-empty':'today';
+ const day=dayForDate(w,selectedDate??today());
+ if(day?.kind==='day_off')return 'off';
+ if(state?.lastError?.reason==='not_authenticated')return 'signed-cache';
+ // The reference marks the saved schedule stale when the previous refresh predates 6 AM today.
+ const last=state?.lastUpdated;if(last){const freshDate=localDate(last,settings().timeZone);const current=today();const early=wallTimeToEpoch(current,'06:00',settings().timeZone);
+  if(freshDate!==current || (early!==null && Date.now()>=early && last<early))return 'stale';}
+ return 'today';
+}
+function header(variant){
+ const badge=$('.hd .s',app),updated=state?.lastUpdated;
+ const signout=!week()&&state?.lastError?.reason==='not_authenticated';
+ let label='Not refreshed yet';
+ if(signout)label='Signed out';
+ else if(updated){const d=localDate(updated,settings().timeZone);label=(d===today()?'Updated ':'Updated yesterday, ')+stamp(updated);}
+ if(variant==='stale'&&updated)label=`Updated ${localDate(updated,settings().timeZone)===today()?'today':'yesterday'}, ${stamp(updated)}`;
+ updateFirstText(badge,label+' ');
+ if(badge){const textNode=[...badge.childNodes].find(node=>node.nodeType===Node.TEXT_NODE);if(textNode)textNode.replaceWith(h('span','update-label',label));}
+ const refresh=$('.hd .btn',app);
+ if(refresh){
+  refresh.disabled=busy;refresh.classList.toggle('hot',variant==='stale'&&!busy);
+  refresh.setAttribute('aria-label',busy?'Refreshing schedule':'Refresh schedule');
+  refresh.setAttribute('aria-busy',String(busy));refresh.onclick=refreshSchedule;
+  const icon=refresh.querySelector('svg');if(icon)icon.classList.toggle('spinning',busy);
+  // Only rewrite the text node, never remove the design's SVG.
+  updateFirstText(refresh,busy?'Refreshing…':'Refresh');
  }
- while(target.childNodes.length>next.childNodes.length)target.lastChild.remove();
+ // Retain the exact visual icon, but make it a real accessible trigger.
+ const original=$('.hd .s svg',app);
+ if(original){
+  const button=h('button','schedule-info-button');button.type='button';button.title='Schedule details';
+  button.setAttribute('aria-label','Schedule details');button.setAttribute('aria-expanded',String(lastInfoOpen));
+  original.replaceWith(button);button.append(original);
+  const popup=h('div','schedule-info-popover');popup.id='schedule-info-popover';popup.hidden=!lastInfoOpen;
+  popup.setAttribute('role','status');popup.append(h('strong','','Schedule details'));
+  popup.append(h('div','',updated?`Last updated: ${stamp(updated,{month:'short',day:'numeric'})}`:'Not refreshed yet'));
+  if(state?.lastError?.reason)popup.append(h('div','',`Last refresh: ${errorMessage(state.lastError)}`));
+  const warnings=week()?.warnings?.length??0;
+  if(warnings)popup.append(h('div','',`${warnings} WFM data warning${warnings===1?'':'s'}. See Diagnostics.`));
+  button.setAttribute('aria-controls',popup.id);
+  button.append(popup);
+  button.onclick=e=>{e.stopPropagation();lastInfoOpen=!lastInfoOpen;button.setAttribute('aria-expanded',String(lastInfoOpen));popup.hidden=!lastInfoOpen;};
+ }
 }
-function appearance(s){
- if(s.type==='break')return isMeal(s)?['coral','255,155,122','meal','Meal']:['amber','246,189,75','cup','Break'];
- if(s.type==='queue')return ['sky','108,196,240','queue','Queue'];
- if(s.type==='exception')return ['violet','182,156,255','people','Event'];
- return ['green','91,214,164','flag',s.type==='time_off'?'Time off':'Work'];
+
+
+// Animate the *existing* schedule content to its new position after a day or
+// filter change. The countdown ring is independent and keeps its own dock/return
+// transition. Never animate initial load, async state updates, or ticking clocks.
+// Only explicit screen-navigation clicks animate. Avoid animating async renders.
+function changePopupMode(nextMode){
+ if(mode===nextMode)return;
+ mode=nextMode;render();
+ if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+ const panel=mode==='settings'?$('.settings-body',app):$('.tabs',app);
+ const content=mode==='settings'?null:$('.hero',app)??$('.dc',app)??$('.seg',app);
+ for(const element of [panel,content])element?.animate([
+  {opacity:0,transform:'translateY(6px)'},
+  {opacity:1,transform:'translateY(0)'}
+ ],{duration:200,easing:'ease-out'});
 }
-function showToast(message,kind='success'){
- let el=$('#popup-toast');if(!el){el=h('div','popup-toast');el.id='popup-toast';el.setAttribute('role','status');document.body.append(el);}
- clearTimeout(toastTimer);el.className='popup-toast '+kind;el.textContent=message;el.hidden=false;
- toastTimer=setTimeout(()=>{el.hidden=true;},3500);
+function changeScheduleView(change,kind='day'){
+ const oldSeg=$('.seg',app),oldTable=$('.tb',app),oldHero=$('.hero',app);
+ const oldSegY=oldSeg?.getBoundingClientRect().top;
+ const oldTableY=oldTable?.getBoundingClientRect().top;
+ const wasHero=Boolean(oldHero);
+ change();
+ render();
+ if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+ const duration=260,easing='cubic-bezier(.22,.72,.28,1)';
+ const animate=(selector,previousTop)=>{
+  const element=$(selector,app);
+  if(!element)return;
+  const moved=Number.isFinite(previousTop)?previousTop-element.getBoundingClientRect().top:0;
+  const offset=kind==='day'&&Math.abs(moved)>1?moved:6;
+  element.animate([
+   {transform:`translateY(${offset}px)`,opacity:kind==='day'&&Math.abs(moved)>1?0.9:0.72},
+   {transform:'translateY(0)',opacity:1}
+  ],{duration,easing});
+ };
+ animate('.seg',oldSegY);
+ animate('.tb',oldTableY);
+ const offDay=$('.dc',app);
+ if(offDay)offDay.animate([
+  {opacity:0,transform:'translateY(7px)'},
+  {opacity:1,transform:'translateY(0)'}
+ ],{duration,easing});
+ const hero=$('.hero',app);
+ if(hero&&!wasHero)hero.animate([
+  {opacity:0,transform:'translateY(-7px)'},
+  {opacity:1,transform:'translateY(0)'}
+ ],{duration,easing});
 }
-function changeMode(next){mode=next;$('#schedule-info')?.remove();render();window.scrollTo(0,0);}
-function chooseDate(date,focus=false){
- selectedDate=date;
- if($('#track')?.dataset.week===weekStart(date)){updatePicker();renderJourney();}else render();
- if(focus)$(`[data-date="${date}"]`)?.focus();
+
+function tabs(){
+ let container=$('.tabs',app);if(!container)return;
+ if(retainedPicker){container.replaceWith(retainedPicker);container=retainedPicker;retainedPicker=null;}
+ weekPicker(container,{start:weekStart(selectedDate??today()),selected:selectedDate??today(),today:today(),week:selectedWeek(),settings:settings(),onSelect:(date,focus)=>{
+  if(selectedDate===date)return;
+  changeScheduleView(()=>{selectedDate=date;lastInfoOpen=false;});
+  if(focus)$(`[data-date="${date}"]`,app)?.focus();
+ }});
+}
+function footer(){
+ const btn=$('.ft button',app),link=$('.ft a',app);
+ if(btn){btn.type='button';btn.onclick=()=>changePopupMode('settings');}
+ if(link){link.href='#';link.onclick=event=>{event.preventDefault();openSite();};}
+}
+function liveCountdown(now=Date.now()){
+ const w=week(),date=today(),day=dayForDate(w,date);
+ if(!day||day.kind==='day_off')return null;
+ const {current,next,shiftBounds}=contextForDay(w,date,settings(),now);
+ if(!shiftBounds||now>=shiftBounds.end)return null;
+ if(current){return {text:formatDuration(current.end-now,{seconds:true}),progress:segmentProgress(current,now),name:current.name};}
+ if(next&&now<next.start&&now>=shiftBounds.start){
+  const segments=buildDaySegments(day,settings()),prior=segments.filter(e=>e.end<=now).at(-1);
+  const gapStart=prior?.end??shiftBounds.start;
+  if(next.start>gapStart)return {text:formatDuration(next.start-now,{seconds:true}),progress:(now-gapStart)/(next.start-gapStart),name:next.name};
+ }
+ return null; // No honest interval against which to show progress.
+}
+function dottedRing(){
+ const ring=$('.hero .ring',app);if(!ring)return;
+ ring.classList.add('inactive-ring');
+ const number=ring.querySelector('.ct b');if(number)number.textContent='';
+ const label=ring.querySelector('.ct span');if(label)label.textContent='';
+}
+function hero(day){
+ const container=$('.hero',app);if(!container)return;
+ const w=week(),date=selectedDate??today(),s=settings();let current=null,next=null,nextBreak=null,shiftBounds=null;
+ if(day){({current,next,nextBreak,shiftBounds}=contextForDay(w,date,s,Date.now()));}
+ const now=Date.now();
+ let heading='Schedule',nextName='No upcoming change',nextAt='',then=null;
+ if(date!==today()){
+  heading=day?.shift?`Shift · ${day.shift.start}–${day.shift.end}`:'No scheduled shift';
+  nextName=day?.events?.find(e=>e.source==='SchState'&&[4,5].includes(e.stateType))?.name??'View daily activities';
+ }else if(shiftBounds){
+  if(now<shiftBounds.start){heading='Before shift';nextAt=stamp(shiftBounds.start);nextName='Shift starts';}
+  else if(now>=shiftBounds.end){heading='Shift ended';nextName='No more changes today';}
+  else if(current){heading=current.name;nextAt=stamp(next?.start??shiftBounds.end);nextName=next?.name??'Shift end';}
+  else if(next){heading='Between activities';nextAt=stamp(next.start);nextName=next.name;}
+  else{heading='Shift';nextAt=stamp(shiftBounds.end);nextName='Shift end';}
+  const upcomingBreaks=buildDaySegments(day,s).filter(segment=>segment.type==='break'&&segment.start>now);
+  then=upcomingBreaks.find(segment=>segment.start>(next?.start??0))??nextBreak;
+ }else{heading='No shift boundary';nextName='See native events below';}
+ setText('.nm',heading);
+ const lbl=$$('.hero .lb',app);if(lbl[0])lbl[0].textContent=date===today()?'Now':'Selected day';if(lbl[1])lbl[1].textContent=`Next${nextAt?' · '+nextAt:''}`;
+ const type=$('.hero .c',app);if(type){type.textContent=nextName;type.className='c '+(next?.type==='queue'?'q':next?.type==='exception'?'e':'b');}
+ const nextLine=$('.hero .then span',app);
+ if(nextLine){nextLine.replaceChildren();if(then){nextLine.append('Then ',h('b','',then.name),` at ${stamp(then.start)} · in ${length(Math.max(0,then.start-now))}`);}else nextLine.append('Timeline from WFM');}
+ if(variantIsStale())container.setAttribute('aria-label','Cached schedule countdown');
+ dottedRing(); // The only active progress display is the persistent movable ring.
+}
+
+function variantIsStale(){return activeVariant==='stale';}
+function rows(day){
+ const table=$('.tb',app);if(!table)return;
+ const date=selectedDate??today();
+ if(!selectedWeek()){
+  table.classList.add('journey');
+  if(!table.classList.contains('missing-week')){
+   table.classList.add('missing-week');const empty=h('div','empty-hint','No saved schedule for this week.');
+   const button=h('button','btn','Refresh this week');button.type='button';button.onclick=refreshSchedule;empty.append(h('br'),button);table.replaceChildren(empty);
+  }
+  const button=$('button',table);button.disabled=busy;button.textContent=busy?'Refreshing…':'Refresh this week';
+ }else{table.classList.remove('missing-week');journey(table,{day,settings:settings(),filter,isToday:date===today()});}
+ const filterButtons=$$('.seg button',app);for(const b of filterButtons){const group=b.textContent.trim()==='Breaks & events'?'special':b.textContent.trim()==='Queues'?'queues':'all';b.classList.toggle('on',group===filter);b.onclick=()=>{if(filter===group)return;changeScheduleView(()=>{filter=group;},'filter');};}
+}
+function signedEmpty(){
+ const heading=$('.so2 h2',app),description=$('.so2 p',app),login=$('.so2 .pr',app),retry=$('.so2 .sc',app);
+ const notAuth=state?.lastError?.reason==='not_authenticated';
+ const anotherWeek=weekStart(selectedDate??today())!==weekStart(today());
+ if(anotherWeek&&!notAuth){
+  if(heading)heading.textContent='No saved schedule for this week';
+  if(description)description.textContent='Refresh to load the selected week from WFM.';
+  if(login){login.textContent=busy?'Refreshing…':'Refresh this week';login.disabled=busy;login.onclick=refreshSchedule;}
+  if(retry){retry.textContent='Open WFM';retry.onclick=openSite;}
+  return;
+ }
+ if(heading)heading.textContent=notAuth?'Sign in to see your schedule':'Your schedule is not loaded';
+ if(description)description.textContent=notAuth?'Your WFM session has ended. Log in to load today’s shifts and breaks.':'Check WFM for an existing session before opening the site.';
+ if(login){login.textContent=loginBusy?'Checking…':'Log in to WFM';login.disabled=loginBusy;login.setAttribute('aria-busy',String(loginBusy));login.onclick=loginSchedule;}
+ if(retry){retry.disabled=busy;retry.textContent=busy?'Refreshing…':'Refresh';retry.onclick=refreshSchedule;}
+}
+
+function addNonmatchedPanel(){
+ // This design file has no reference for unknown/other day screens; keep its clean structure and a small explicit message.
+ const day=dayForDate(selectedWeek(),selectedDate??today());if(!day)return;
+ if(day.kind!=='unknown'&&day.kind!=='other')return;
+ const t=$('.hero .nm',app);if(t)t.textContent=day.kind==='unknown'?'No schedule data':'Unrecognised day type';
+ const c=$('.hero .c',app);if(c)c.textContent=day.kind==='unknown'?'Not confirmed as a day off':'Native events shown below';
+}
+function installScreen(variant){
+ retainedPicker=$('.week-picker',app);
+ activeVariant=variant;app.innerHTML=SCREENS[variant];style.href=`design-${variant}.css`;
+ header(variant);tabs();footer();if(variant==='signed-empty'){signedEmpty();syncLiveRing();return;}
+ const day=dayForDate(selectedWeek(),selectedDate??today());
+ if(variant!=='off'){
+  // The countdown card belongs exclusively to Today. Other days show their
+  // schedule rows while the same live ring docks in the header.
+  if((selectedDate??today())===today())hero(day);
+  else $('.hero',app)?.remove();
+  rows(day);addNonmatchedPanel();
+ }
+ syncLiveRing();
+}
+// One persistent DOM element: never reconstructed during day changes or renders.
+let liveRing=null,liveRingTarget=null;
+const ringMarkup=`<svg aria-hidden="true" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--ln)" stroke-width="8"></circle><circle class="live-stroke" cx="50" cy="50" r="42" fill="none" stroke="#30D6AC" stroke-width="8" stroke-linecap="round" stroke-dasharray="0 264" transform="rotate(-90 50 50)"></circle></svg><div class="ct"><b></b><span>LEFT</span></div>`;
+function getLiveRing(){
+ if(!liveRing){liveRing=h('div','ring shared-countdown');liveRing.id='shared-countdown';liveRing.innerHTML=ringMarkup;document.body.append(liveRing);}
+ return liveRing;
+}
+function hideLiveRing(){if(liveRing){liveRing.hidden=true;liveRingTarget=null;}const logo=$('.hd .lg',app);if(logo)logo.classList.add('idle-header-ring');}
+function syncLiveRing(){
+ if(mode!=='schedule'||!week()){hideLiveRing();return;}
+ const countdown=liveCountdown();
+ if(!countdown){hideLiveRing();return;}
+ const isToday=(selectedDate??today())===today();
+ const dest=isToday?$('.hero .ring',app):$('.hd .lg',app);
+ if(!dest){hideLiveRing();return;}
+ const el=getLiveRing(),rect=dest.getBoundingClientRect();
+ if(!rect.width||!rect.height){hideLiveRing();return;}
+ el.hidden=false;el.classList.toggle('docked',!isToday);
+ const timeText=el.querySelector('.ct b');
+ if(timeText){
+  // Docked indicator keeps a tiny live readout: minutes, or bare seconds in the final minute.
+  const remainingText=countdown.text;
+  const parts=remainingText.split(':').map(Number);
+  const seconds=parts.reduce((total,part)=>total*60+part,0);
+  const remaining=Math.max(0,Math.ceil(seconds));
+  timeText.textContent=isToday?remainingText:(remaining<60?String(remaining):`${Math.ceil(remaining/60)}m`);
+  timeText.style.fontSize=isToday?(remainingText.length>7?'17px':'21px'):'33px';
+ }
+ const sublabel=el.querySelector('.ct span');if(sublabel)sublabel.hidden=!isToday;
+ const progress=Math.max(0,Math.min(1,countdown.progress));
+ el.querySelector('.live-stroke').setAttribute('stroke-dasharray',`${Math.round(264*progress)} 264`);
+ const scale=Math.min(rect.width/100,rect.height/100);
+ const x=rect.left+(rect.width-100*scale)/2,y=rect.top+(rect.height-100*scale)/2;
+ const target=`translate3d(${x}px, ${y}px, 0) scale(${scale})`;
+ if(!liveRingTarget){el.classList.add('no-transition');el.style.transform=target;void el.offsetWidth;el.classList.remove('no-transition');}
+ else if(target!==liveRingTarget){el.style.transform=target;}
+ liveRingTarget=target;
+ // Exactly one visible ring: hide static design ring in today's live slot.
+ if(isToday)dest.classList.add('live-ring-slot');
+ else dest.classList.add('header-ring-slot');
 }
 function render(){
+ if(mode==='settings'){hideLiveRing();renderSettings();return;}
  selectedDate??=today();
- if(mode==='settings'){renderSettings();return;}
- app.innerHTML=`<section id="view-schedule" aria-labelledby="h-sched">
- <header class="top"><h1 id="h-sched"><span class="sub" id="today-sub"></span><span id="date-title"></span></h1>
- <button class="icon-btn" id="settings" type="button" aria-label="Alert settings">${icon('settings')}</button></header>
- <section class="week-picker" aria-label="Choose a day">
- <div class="week-bar"><div class="week-range"><small>Week</small><span id="range"></span></div>
- <button class="today-chip" id="today" type="button" hidden>Today</button>
- <button class="arrow" id="prev" type="button" aria-label="Previous week">${icon('back',16,2)}</button>
- <button class="arrow" id="next" type="button" aria-label="Next week">${icon('next',16,2)}</button></div>
- <div class="track" id="track" role="group" aria-label="Days of the week"><div class="thumb" id="thumb" aria-hidden="true"></div></div>
- <div class="week-summary" id="summary" aria-live="polite"></div></section>
- <div id="notice" hidden></div>
- <div class="tabs" role="tablist" aria-label="Schedule filter">
- <button class="tab wide" role="tab" aria-selected="true" data-filter="special">Breaks &amp; events<span class="count"></span></button>
- <button class="tab" role="tab" aria-selected="false" data-filter="queues">Queues</button>
- <button class="tab" role="tab" aria-selected="false" data-filter="all">All</button></div>
- <div id="list" class="timeline"></div><div id="empty" class="empty" hidden></div>
- <button class="alert-link" id="alerts" type="button"><span style="flex:0;color:var(--accent)">${icon('bell')}</span><strong></strong><span id="lead-summary"></span><span style="flex:0;color:var(--muted)">${icon('next',16,2)}</span></button>
- <footer class="schedule-footer"><div class="updated"><span id="updated"></span><button type="button" class="info-button" aria-label="Schedule details" aria-expanded="false">${icon('info',13)}</button></div><button id="refresh" type="button">Refresh</button><button id="wfm" type="button">Open WFM</button></footer>
- </section>`;
- $('#settings').onclick=$('#alerts').onclick=()=>changeMode('settings');
- $('#refresh').onclick=refreshSchedule;$('#wfm').onclick=openSite;
- $('.info-button').onclick=toggleInfo;
- $('#prev').onclick=()=>chooseDate(addDays(selectedDate,-7));
- $('#next').onclick=()=>chooseDate(addDays(selectedDate,7));
- $('#today').onclick=()=>chooseDate(today(),true);
- for(const b of $$('[data-filter]'))b.onclick=()=>{filter=b.dataset.filter;renderJourney();};
- buildPicker();renderJourney();
+ const variant=determineVariant();installScreen(variant);
 }
-function buildPicker(){
- const track=$('#track'),start=weekStart(selectedDate);track.dataset.week=start;
- for(let i=0;i<7;i++){
-  const date=addDays(start,i),day=dayForDate(cachedWeek(date),date),off=day?.kind==='day_off';
-  const b=h('button','day'+(off?' off':'')+(!day||day.kind==='unknown'?' unknown':'')+(date===today()?' today':''));b.type='button';b.dataset.date=date;
-  b.setAttribute('aria-label',dateLabel(date,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+(off?', day off':!day?', no saved schedule':`, ${summaryFor(day).count} breaks`)+(date===today()?', today':''));
-  if(date===today())b.setAttribute('aria-current','date');
-  b.append(h('span','dow',dateLabel(date,{weekday:'short'})),h('span','num',String(Number(date.slice(8)))),h('span','pip'));
-  b.onclick=()=>chooseDate(date);track.append(b);
- }
- track.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();chooseDate(e.key==='Home'?weekStart(selectedDate):e.key==='End'?addDays(weekStart(selectedDate),6):addDays(selectedDate,e.key==='ArrowRight'?1:-1),true);};
- let x=null;
- track.addEventListener('touchstart',e=>{x=e.touches[0].clientX;},{passive:true});
- track.addEventListener('touchend',e=>{if(x!==null&&Math.abs(e.changedTouches[0].clientX-x)>=30)chooseDate(addDays(selectedDate,e.changedTouches[0].clientX<x?1:-1));x=null;},{passive:true});
- const a=start,z=addDays(start,6),crossYear=a.slice(0,4)!==z.slice(0,4);
- $('#range').textContent=dateLabel(a,{month:'short'})+' '+Number(a.slice(8))+(crossYear?' '+a.slice(0,4):'')+' – '+(a.slice(0,7)===z.slice(0,7)?'':dateLabel(z,{month:'short'})+' ')+Number(z.slice(8))+(crossYear?' '+z.slice(0,4):'');
- updatePicker();
+function errorMessage(result){
+ const reason=result?.reason;
+ if(reason==='not_authenticated')return 'WFM session expired. Log in to refresh.';
+ if(reason==='network_error'||reason==='request_failed'||reason==='transport_error')return 'Could not reach WFM. Check your connection.';
+ if(reason==='parse_error')return 'WFM returned a schedule we could not read.';
+ if(reason==='extension_error'||reason==='runtime_error')return 'Extension background service unavailable. Please try again.';
+ return typeof result?.message==='string'&&result.message.length<180?result.message:'Could not refresh your schedule.';
 }
-function updatePicker(){
- const start=weekStart(selectedDate),index=Math.round((Date.parse(selectedDate)-Date.parse(start))/86400000);
- for(const b of $$('#track .day'))b.setAttribute('aria-pressed',String(b.dataset.date===selectedDate));
- $('#thumb').style.transform=`translateX(${index*100}%)`;
- $('#today').hidden=selectedDate===today();
- const day=selectedDay(),summary=$('#summary'),info=summaryFor(day);
- summary.replaceChildren(h('b','',dateLabel(selectedDate,{weekday:'long'})+', '+Number(selectedDate.slice(8))+' '+dateLabel(selectedDate,{month:'short'})),document.createTextNode(' · '+(day?.kind==='day_off'?'day off':!day||day.kind==='unknown'?'no saved schedule':`${info.count} breaks · ${info.minutes} min`)));
- summary.classList.remove('pop');void summary.offsetWidth;summary.classList.add('pop');
+function showToast(message,kind='error'){
+ let node=document.querySelector('#popup-toast');
+ if(!node){node=h('div','popup-toast');node.id='popup-toast';node.setAttribute('role','status');node.setAttribute('aria-live','polite');document.body.append(node);}
+ clearTimeout(statusTimer);
+ node.className=`popup-toast ${kind}`;
+ node.textContent=message;
+ // Restart the small entrance transition for consecutive notifications.
+ void node.offsetWidth;
+ node.classList.add('visible');
+ statusTimer=setTimeout(()=>{node.classList.remove('visible');setTimeout(()=>{if(!node.classList.contains('visible'))node.textContent='';},180);},kind==='success'?3000:4200);
 }
-function renderJourney(){
- const day=selectedDay(),all=segmentsFor(day),events=filter==='special'?specials(day):filter==='queues'?all.filter(s=>s.type==='queue'):all;
- const now=Date.now(),isToday=selectedDate===today(),past=selectedDate<today();
- $('#date-title').textContent=dateLabel(selectedDate,{weekday:'long',day:'numeric',month:'short'}).replace(/ (\d+)/,', $1');
- $('#today-sub').textContent=isToday?'Today · '+stamp(now):dateLabel(selectedDate,{year:'numeric'});
- for(const b of $$('[data-filter]'))b.setAttribute('aria-selected',String(b.dataset.filter===filter));
- $('.count').textContent=String(specials(day).length);
- const list=h('div');
- events.forEach((s,i)=>{
-  const done=past||(isToday&&now>=s.end),live=isToday&&now>=s.start&&now<s.end;
-  const p=done?1:live?(now-s.start)/(s.end-s.start):0;
-  if(i>0&&s.start>events[i-1].end){
-   const gs=events[i-1].end,ge=s.start,gp=past?1:!isToday?0:Math.max(0,Math.min(1,(now-gs)/(ge-gs))),inGap=isToday&&now>gs&&now<ge;
-   const row=h('div','row gap-row '+(gp===1?'done':''));
-   row.innerHTML=`<div class="time"></div><div class="grail"><i><b class="fill${inGap?' now':''}"></b></i></div><div class="gtext${inGap?' on':''}"></div>`;
-   const fill=$('.fill',row);fill.style.height=inGap?`calc(12px + ${gp} * (100% - 30px))`:`${gp*100}%`;fill.dataset.t=stamp(now).replace(/ [AP]M$/,'');
-   $('.gtext',row).textContent=inGap?duration(ge-now)+' until '+s.name:duration(ge-gs)+' free';list.append(row);
-  }
-  const [color,rgb,symbol,label]=appearance(s),row=h('div','row ev '+(done?'done':live?'live':'next'));
-  row.dataset.eventId=s.id;row.style.cssText=`--c:var(--${color});--tint:rgba(${rgb},.14);--glow:rgba(${rgb},.45)`;
-  row.innerHTML=`<div class="time"><b></b><small></small></div><div class="rail"><div class="dot">${done?icon('check',8,4):''}</div>${i<events.length-1?`<div class="tail"><b class="fill" style="height:${p*100}%"></b></div>`:''}</div><div class="card"><div class="tile">${icon(symbol)}</div><div class="t"><div class="name"></div><div class="meta"></div></div><div class="chip"></div>${live?`<div class="bar"><b style="width:${p*100}%"></b></div>`:''}</div>`;
-  const parts=stamp(s.start).split(' ');$('.time b',row).textContent=parts[0];$('.time small',row).textContent=parts[1];
-  $('.name',row).textContent=s.name;$('.meta',row).textContent=done?label+' · done':live?'Ends '+stamp(s.end):label+' · ends '+stamp(s.end);
-  $('.chip',row).textContent=live?duration(s.end-now)+' left':duration(s.end-s.start);list.append(row);
- });
- if(events.length){const b=events.filter(s=>s.type==='break'),total=h('div','total');total.textContent=filter==='special'?`${b.length} breaks · ${Math.round(b.reduce((n,s)=>n+s.end-s.start,0)/60000)} min total${isToday?' today':''}`:`${events.length} ${filter==='queues'?'queue changes':'activities'} · ${duration(events.reduce((n,s)=>n+s.end-s.start,0))} total`;list.append(total);}
- reconcileChildren($('#list'),list);
- $('#empty').hidden=Boolean(events.length);$('#list').hidden=!events.length;
- if(!events.length){
-  const empty=$('#empty');empty.replaceChildren(document.createTextNode(day?.kind==='day_off'?'Day off. Enjoy your time away.':!day||day.kind==='unknown'?'No saved schedule for this day.':filter==='queues'?'No queue changes on your schedule today.':'No events in this filter.'));
-  if(!day||day.kind==='unknown'){const b=h('button','',loginBusy?'Checking…':state?.lastError?.reason==='not_authenticated'?'Log in to WFM':'Refresh to load this week');b.type='button';b.disabled=busy||loginBusy;b.onclick=state?.lastError?.reason==='not_authenticated'?loginSchedule:refreshSchedule;empty.append(b);}
- }
- const s=settings(),alerts=s.showRing&&(s.alertBreaks||s.alertExceptions||s.alertShiftEnd);
- $('#alerts strong').textContent=alerts?'Alerts on':'Alerts off';$('#lead-summary').textContent=alerts?s.leadMinutes+' min before':'Manage alerts';
- const notice=$('#notice'),error=state?.lastError;notice.hidden=!error;notice.className='notice';notice.textContent=error?errorMessage(error):'';
- if(error?.reason==='not_authenticated'){const b=h('button','',loginBusy?'Checking…':'Log in to WFM');b.type='button';b.disabled=loginBusy;b.onclick=loginSchedule;notice.append(b);}
- const updated=state?.week?.weekStart===weekStart(selectedDate)?state.lastUpdated:state?.weekUpdated?.[weekStart(selectedDate)];
- $('#updated').textContent=updated?'Updated '+stamp(updated,{month:'short',day:'numeric'}):'Not refreshed yet';
- $('#refresh').textContent=busy?'Refreshing…':'Refresh';$('#refresh').disabled=busy||loginBusy;
-}
-function toggleInfo(){
- const old=$('#schedule-info');if(old){old.remove();$('.info-button')?.setAttribute('aria-expanded','false');return;}
- const popup=h('div','info-popover');popup.id='schedule-info';popup.setAttribute('role','status');popup.append(h('strong','','Schedule details'),h('div','',state?.lastUpdated?'Last updated: '+stamp(state.lastUpdated,{month:'short',day:'numeric'}):'Not refreshed yet'));
- if(state?.lastError)popup.append(h('div','',errorMessage(state.lastError)));
- popup.append(h('div','',`${cachedWeek(selectedDate)?.warnings?.length??0} WFM data warnings`));document.body.append(popup);$('.info-button').setAttribute('aria-expanded','true');
-}
-function errorMessage(result){return result?.reason==='not_authenticated'?'WFM session expired. Log in to refresh.':result?.reason==='parse_error'?'WFM returned a schedule we could not read.':result?.reason==='extension_error'?'Extension background service unavailable. Please try again.':'Could not reach WFM. Your saved schedule is still available.';}
-async function openSite(){try{if(!(await send({type:'WFM_OPEN_SITE'}))?.ok)throw Error();}catch{showToast('Unable to open WFM.','error');}}
-async function loadState(){const r=await send({type:'WFM_GET_STATE'});if(!r?.ok)throw Error();state=r.state;render();}
-async function refreshSchedule(){
- if(busy||loginBusy)return;busy=true;render();
- try{const r=await send({type:'WFM_REFRESH',date:selectedDate});await loadState();showToast(r?.ok?'Schedule refreshed.':errorMessage(r),r?.ok?'success':'error');}
- catch{showToast('Extension background service unavailable.','error');}finally{busy=false;render();}
+async function openSite(){
+ try{const result=await send({type:'WFM_OPEN_SITE'});if(!result?.ok)showToast('Unable to open WFM.');}
+ catch{showToast('Extension background service unavailable.');}
 }
 async function loginSchedule(){
- if(busy||loginBusy)return;loginBusy=true;render();
- try{const r=await send({type:'WFM_LOGIN_CHECK'});await loadState();showToast(r?.ok?r.action==='schedule_loaded'?'Schedule loaded.':'WFM opened for sign-in.':errorMessage(r),r?.ok?'success':'error');}
- catch{showToast('Extension background service unavailable.','error');}finally{loginBusy=false;render();}
+ if(loginBusy||busy)return;
+ loginBusy=true;render();
+ try{
+  const result=await send({type:'WFM_LOGIN_CHECK'});
+  await loadState();
+  if(!result?.ok)showToast(errorMessage(result));
+  else if(result.action==='reused'||result.action==='created')showToast('WFM opened for sign-in.','success');
+  else if(result.action==='schedule_loaded')showToast('Schedule loaded.','success');
+ }catch{showToast('Extension background service unavailable.');}
+ finally{loginBusy=false;render();}
 }
-function settingChange(patch){
- pendingSettings={...pendingSettings,...patch};
- const revisions=Object.fromEntries(Object.keys(patch).map(key=>[key,settingRevisions[key]=(settingRevisions[key]??0)+1]));
- // Serialize rapid changes: an older response must not overwrite a newer choice.
- saveQueue=saveQueue.then(async()=>{
-  try{const r=await send({type:'WFM_SETTINGS_UPDATE',patch});if(!r?.ok)throw Error();state=r.state;for(const k of Object.keys(patch))if(settingRevisions[k]===revisions[k])delete pendingSettings[k];showToast('Settings saved.');}
-  catch{for(const k of Object.keys(patch))if(settingRevisions[k]===revisions[k])delete pendingSettings[k];showToast('Could not save settings.','error');}
-  if(mode==='settings')syncSettings();
- });
- return saveQueue;
+async function refreshSchedule(){
+ if(busy||loginBusy)return;
+ busy=true;render();
+ try{
+  const result=await send({type:'WFM_REFRESH',date:selectedDate??today()});
+  await loadState();
+  if(!result?.ok)showToast(errorMessage(result));
+  else showToast('Schedule refreshed.','success');
+ }catch(error){
+  state={...(state??{}),lastError:{reason:'extension_error',message:'Background worker unavailable'}};
+  showToast('Extension background service unavailable.');
+ }finally{busy=false;render();}
+}
+
+async function loadState(){const result=await send({type:'WFM_GET_STATE'});if(!result?.ok)throw Error('WFM worker returned invalid state');state=result.state;render();}
+async function settingChange(patch){try{const response=await send({type:'WFM_SETTINGS_UPDATE',patch});if(response?.ok){state=response.state;showToast('Settings saved.','success');}else showToast('Could not save settings.');}catch{showToast('Could not save settings.');} }
+function diagnosticCounts(report){
+ const rpcEvents=(report?.runs??[]).flatMap(run=>run.events??[]);
+ const uiEvents=report?.companionEvents??[];
+ const all=[...rpcEvents,...uiEvents];
+ const anomalous=event=>/anomal|error|fail|incomplete|mismatch|unknown|invalid/i.test(event.code??'');
+ return {logs:all.length,anomalies:all.filter(anomalous).length,diffs:uiEvents.filter(event=>event.code==='dom_schedule_difference').length};
+}
+async function diagnosticsReport(){
+ const result=await send({type:'WFM_EXPORT_DIAGNOSTICS'});
+ if(!result?.ok)throw Error('Diagnostics unavailable');
+ return result.report;
+}
+async function refreshDiagnosticCounts(){
+ try{
+  const counts=diagnosticCounts(await diagnosticsReport());
+  const summary=$('#diag-summary');if(!summary)return;
+  summary.replaceChildren(`${counts.logs} logs · `,h('span','anomalies',`${counts.anomalies} anomalies`),` · ${counts.diffs} diffs`);
+  const health=$('#diag-health');if(health){health.textContent=counts.anomalies||counts.diffs?'Needs attention':'All clear';health.className=counts.anomalies||counts.diffs?'':'ok';}
+ }catch{setText('#diag-status','Diagnostics unavailable.');}
 }
 function renderSettings(){
- const view=++settingsView;
- app.innerHTML=`<section id="view-settings" aria-labelledby="h-set"><header class="top"><button class="icon-btn ghost" type="button" id="back" aria-label="Back to schedule">${icon('back',20,2)}</button><h1 id="h-set">Alert settings</h1></header>
- <div class="box"><h2>Remind me before<small>Pick a preset or type your own minutes</small></h2><div class="presets"><button class="preset" type="button" data-min="2">2 min</button><button class="preset" type="button" data-min="5">5 min</button><button class="preset" type="button" data-min="10">10 min</button><label class="cust"><input id="lead" type="number" inputmode="numeric" min="1" max="120" aria-label="Custom minutes"><span>min</span></label></div><div class="preview"><span style="color:var(--accent)">${icon('bell',14,1.9)}</span><span id="lead-preview"></span></div></div>
- <div class="label">Display</div><div class="list" id="display-options" style="margin-top:0"></div>
- <div class="label">Alert me about</div><div class="list" id="alert-options" style="margin-top:0"></div>
- <div class="diag"><b class="dh">Diagnostics</b> · <span id="diag-health" class="ok">Checking…</span><div id="diag-summary">Loading diagnostics…</div><div class="actions"><button class="btn" type="button" id="export">Export</button><button class="btn" type="button" id="copy">Copy JSON</button><button class="btn danger" type="button" id="clear">Clear</button></div><div class="diag-status" id="diag-status" role="status" hidden></div></div></section>`;
- const options=[['showRing','Page-edge alert ring','Glowing border around the page','ring','accent','143,163,255'],['alertBreaks','Breaks & meals','Tea breaks and lunch','cup','amber','246,189,75'],['alertExceptions','Coaching & meetings','Coaching sessions and meetings','people','violet','182,156,255'],['alertShiftEnd','Shift end','Heads-up before your shift ends','flag','green','91,214,164'],['queueSwitchToast','Queue-switch toast','Pop-up when your queue changes','queue','sky','108,196,240']];
- for(const [key,name,meta,symbol,color,rgb] of options){
+ // Use the supplied HTML settings layout, with preset-only reminder timing.
+ activeVariant='settings';style.href='design-today.css';
+ app.innerHTML=`<div class="pop settings-reference"><header class="settings-heading"><button class="settings-back" id="back" type="button" aria-label="Back to schedule">${icon('back',20,2)}</button><h1>Alert settings</h1></header>
+ <div class="settings-body">
+  <section class="box"><h2>Remind me before<small>Choose when to get a heads-up</small></h2><div class="presets" role="group" aria-label="Reminder timing"><button class="preset" type="button" data-lead="2">2 min</button><button class="preset" type="button" data-lead="5">5 min</button><button class="preset" type="button" data-lead="10">10 min</button></div><div class="preview">${icon('bell',14,1.9)}<span id="lead-note"></span></div></section>
+  <div class="label">Display</div><div class="list" id="display-options" style="margin-top:0"></div>
+  <div class="label">Alert me about</div><div class="list" id="flags" style="margin-top:0"></div>
+  <section class="diag"><b class="dh">Diagnostics</b> · <span id="diag-health" class="ok">Checking…</span><div id="diag-summary">Loading diagnostics…</div><div class="actions"><button class="btn" id="export" type="button">Export</button><button class="btn" id="copy-json" type="button">Copy JSON</button><button class="btn danger" id="clear" type="button">Clear</button></div><small id="diag-status" role="status"></small></section>
+ </div></div>`;
+ const s=settings();
+ const chips=$$('[data-lead]',app);
+ const highlightChip=value=>chips.forEach(button=>{const active=Number(button.dataset.lead)===value;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
+ const preview=value=>{
+  const note=$('#lead-note');if(!note)return;
+  const segments=buildDaySegments(dayForDate(week(),today()),settings());
+  const event=segments.find(segment=>segment.start>Date.now()&&['break','exception'].includes(segment.type));
+  if(event)note.replaceChildren(`For ${event.name} you'll be alerted at `,h('b','',stamp(event.start-value*60000)));
+  else note.textContent=`You'll be reminded ${value} min before your next event.`;
+ };
+ highlightChip(s.leadMinutes);
+ preview(s.leadMinutes);
+ for(const button of chips)button.onclick=async()=>{const minutes=Number(button.dataset.lead);chips.forEach(b=>b.disabled=true);highlightChip(minutes);preview(minutes);await settingChange({leadMinutes:minutes});highlightChip(settings().leadMinutes);preview(settings().leadMinutes);chips.forEach(b=>b.disabled=false);};
+ for(const [text,key,meta,symbol,color,rgb] of [['Page-edge alert ring','showRing','Glowing border around the page','ring','accent','143,163,255'],['Breaks & meals','alertBreaks','Tea breaks and lunch','cup','amber','246,189,75'],['Coaching & meetings','alertExceptions','Coaching sessions and meetings','people','violet','182,156,255'],['Shift end','alertShiftEnd','Heads-up before your shift ends','flag','green','91,214,164'],['Queue-switch toast','queueSwitchToast','Pop-up when your queue changes','queue','sky','108,196,240']]){
   const row=h('div','opt');row.innerHTML=`<div class="tile" style="--c:var(--${color});--tint:rgba(${rgb},.14)">${icon(symbol,16)}</div><div class="t"><div class="name"></div><div class="meta"></div></div><button class="sw" type="button" role="switch"><i></i></button>`;
-  $('.name',row).textContent=name;$('.meta',row).textContent=meta;
-  const toggle=$('.sw',row);toggle.dataset.setting=key;toggle.setAttribute('aria-label',name);toggle.onclick=()=>{const value=toggle.getAttribute('aria-checked')!=='true';toggle.setAttribute('aria-checked',String(value));settingChange({[key]:value});};
-  $(key==='showRing'?'#display-options':'#alert-options').append(row);
+  $('.name',row).textContent=text;$('.meta',row).textContent=meta;
+  const toggle=$('.sw',row);toggle.dataset.setting=key;toggle.setAttribute('aria-label',text);toggle.setAttribute('aria-checked',String(Boolean(s[key])));
+  toggle.onclick=async()=>{const enabled=toggle.getAttribute('aria-checked')!=='true';toggle.disabled=true;toggle.setAttribute('aria-checked',String(enabled));await settingChange({[key]:enabled});toggle.setAttribute('aria-checked',String(Boolean(settings()[key])));toggle.disabled=false;};
+  $(key==='showRing'?'#display-options':'#flags').append(row);
  }
- $('#back').onclick=()=>changeMode('schedule');
- for(const b of $$('.preset'))b.onclick=()=>{const n=Number(b.dataset.min);$('#lead').value=n;settingChange({leadMinutes:n});syncSettings();};
- $('#lead').oninput=()=>{for(const b of $$('.preset'))b.setAttribute('aria-pressed',String(Number(b.dataset.min)===Number($('#lead').value)));updateLeadPreview(Number($('#lead').value));};
- $('#lead').onchange=()=>{const input=$('#lead'),n=Number(input.value);if(!Number.isInteger(n)||n<1||n>120){input.value=settings().leadMinutes;showToast('Enter a whole number from 1 to 120.','error');syncSettings();return;}settingChange({leadMinutes:n});};
- $('#export').onclick=e=>diagnosticAction(e.currentTarget,'Exporting…',async()=>{const report=await diagnosticsReport();const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const a=h('a');a.href=url;a.download='wfm-diagnostics-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);return 'Diagnostics exported.';});
- $('#copy').onclick=e=>diagnosticAction(e.currentTarget,'Copying…',async()=>{await navigator.clipboard.writeText(JSON.stringify(await diagnosticsReport(),null,2));return 'Copied as JSON';});
- $('#clear').onclick=e=>diagnosticAction(e.currentTarget,'Clearing…',async()=>{if(!(await send({type:'WFM_CLEAR_DIAGNOSTICS'}))?.ok)throw Error();await refreshDiagnosticCounts(view);return 'Logs cleared.';});
- syncSettings();refreshDiagnosticCounts(view);
+ $('#back').onclick=()=>changePopupMode('schedule');
+ $('#export').onclick=async(event)=>{if(event.currentTarget.disabled)return;event.currentTarget.disabled=true;event.currentTarget.dataset.original='Export';event.currentTarget.textContent='Exporting…';try{const report=await diagnosticsReport();const json=JSON.stringify({...report,client:{popupLoaded:true,browserFamily:/Edg\//.test(navigator.userAgent)?'Edge':'Chrome'}},null,2);const url=URL.createObjectURL(new Blob([json],{type:'application/json'}));const a=h('a');a.href=url;a.download=`wfm-diagnostics-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);setText('#diag-status','Diagnostics exported.');showToast('Diagnostics exported.','success');}catch{setText('#diag-status','Export failed.');showToast('Could not export diagnostics.');}finally{const b=$('#export');if(b){b.disabled=false;b.textContent='Export';}}};
+ $('#copy-json').onclick=async(event)=>{if(event.currentTarget.disabled)return;event.currentTarget.disabled=true;event.currentTarget.textContent='Copying…';try{await navigator.clipboard.writeText(JSON.stringify(await diagnosticsReport(),null,2));setText('#diag-status','Copied as JSON');showToast('Copied as JSON','success');}catch{setText('#diag-status','Unable to copy JSON.');showToast('Unable to copy JSON.');}finally{const b=$('#copy-json');if(b){b.disabled=false;b.textContent='Copy JSON';}}};
+ $('#clear').onclick=async(event)=>{if(event.currentTarget.disabled)return;event.currentTarget.disabled=true;event.currentTarget.textContent='Clearing…';try{const result=await send({type:'WFM_CLEAR_DIAGNOSTICS'});if(!result?.ok)throw Error();setText('#diag-status','Logs cleared.');showToast('Logs cleared.','success');await refreshDiagnosticCounts();}catch{setText('#diag-status','Could not clear logs.');showToast('Could not clear logs.');}finally{const b=$('#clear');if(b){b.disabled=false;b.textContent='Clear';}}};
+ refreshDiagnosticCounts();
 }
-function syncSettings(){
- const s=settings();for(const b of $$('.preset'))b.setAttribute('aria-pressed',String(Number(b.dataset.min)===s.leadMinutes));
- if(document.activeElement!==$('#lead'))$('#lead').value=s.leadMinutes;
- for(const b of $$('[data-setting]'))b.setAttribute('aria-checked',String(Boolean(s[b.dataset.setting])));
- updateLeadPreview(s.leadMinutes);
-}
-function updateLeadPreview(minutes){
- const el=$('#lead-preview');if(!el)return;
- const all=specials(dayForDate(cachedWeek(today()),today())),next=all.find(e=>e.start>Date.now())??all[0];
- if(next&&Number.isInteger(minutes)&&minutes>=1&&minutes<=120)el.replaceChildren(document.createTextNode(`For ${next.name} you'll be alerted at `),h('b','',stamp(next.start-minutes*60000)));
- else el.textContent='Alerts appear '+settings().leadMinutes+' min before your next event.';
-}
-async function diagnosticsReport(){const r=await send({type:'WFM_EXPORT_DIAGNOSTICS'});if(!r?.ok)throw Error();return r.report;}
-async function refreshDiagnosticCounts(view=settingsView){
- try{const r=await diagnosticsReport();if(mode!=='settings'||view!==settingsView)return;const all=[...(r.runs??[]).flatMap(run=>run.events??[]),...(r.companionEvents??[])],anomalies=all.filter(e=>/anomal|error|fail|incomplete|mismatch|unknown|invalid/i.test(e.code??'')).length,diffs=(r.companionEvents??[]).filter(e=>e.code==='dom_schedule_difference').length;
-  $('#diag-summary').textContent=`${all.length} logs · ${anomalies} anomalies · ${diffs} diffs`;$('#diag-health').textContent=anomalies||diffs?'Needs attention':'All clear';$('#diag-health').className=anomalies||diffs?'':'ok';
- }catch{if(mode==='settings'&&view===settingsView){$('#diag-health').textContent='Unavailable';$('#diag-summary').textContent='Could not load diagnostics.';}}
-}
-async function diagnosticAction(button,busyLabel,action){
- if(button.disabled)return;const original=button.textContent,view=settingsView;button.disabled=true;button.textContent=busyLabel;
- try{const message=await action();showToast(message);if(mode==='settings'&&view===settingsView){$('#diag-status').hidden=false;$('#diag-status').textContent=message;}}
- catch{showToast('Could not complete diagnostics action.','error');}finally{button.disabled=false;button.textContent=original;}
-}
-document.addEventListener('click',e=>{if($('#schedule-info')&&!e.target.closest('.info-button,.info-popover'))toggleInfo();});
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('#schedule-info')){toggleInfo();$('.info-button')?.focus();}});
+document.addEventListener('click',event=>{if(lastInfoOpen&&!event.target.closest('.schedule-info-button')){lastInfoOpen=false;const button=$('.schedule-info-button',app);if(button){button.setAttribute('aria-expanded','false');button.querySelector('.schedule-info-popover').hidden=true;}}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&lastInfoOpen){lastInfoOpen=false;const button=$('.schedule-info-button',app);if(button){button.setAttribute('aria-expanded','false');button.querySelector('.schedule-info-popover').hidden=true;button.focus();}}});
 chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.wfm_companion_state_v1){state=changes.wfm_companion_state_v1.newValue;if(mode==='schedule')render();}});
-(async()=>{try{await loadState();}catch{state={settings:settingsWithDefaults(),lastError:{reason:'extension_error'}};render();}
- let lastToday=today();
- setInterval(()=>{const current=today();if(current!==lastToday){if(selectedDate===lastToday)selectedDate=current;lastToday=current;render();}else if(mode==='schedule')renderJourney();},1000);
+(async()=>{try{await loadState();}catch{state={lastError:{reason:'extension_error',message:'Background worker unavailable'},settings:settingsWithDefaults()};render();}
+ setInterval(()=>{if(mode==='schedule'){
+  if(week()&&activeVariant!=='off'&&selectedDate===today())hero(dayForDate(week(),selectedDate));
+  if(activeVariant!=='off'&&activeVariant!=='signed-empty')rows(dayForDate(selectedWeek(),selectedDate??today()));
+  syncLiveRing();
+ }},1000);
 })();

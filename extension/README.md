@@ -1,14 +1,14 @@
-# WFM Schedule Companion v0.4.18
+# WFM Schedule Companion v0.4.19
 
-This release implements the supplied `shift-panel-journey (1).html` and `day-switcher.html` references. The popup is 300px wide, with their original colors, typography, spacing, event cards, rail marker, day thumb, presets and switches. The illustration-only clock scrubber is omitted; the journey follows the real clock and schedule. Clock updates retain the existing card/rail nodes for smooth progress.
+This release restores the original v0.4.17 popup as the base. The day selector and events list use the supplied HTML references, with week navigation added. Settings follows the supplied compact HTML layout with three reminder presets (2, 5 and 10 minutes); the manual minutes input is omitted. The original 380×600 layout, schedule header, movable countdown ring, filter controls, footer, light/dark themes, and existing empty/day-off screens are preserved. Component styles are scoped in `schedule-components.css` rather than applied globally. The journey follows the real clock and retains card/rail nodes between ticks.
 
 Snooze now settles the island's initial width before pointer interaction. Enter/Space reliably opens the menu, arrow keys select enabled durations, and Escape closes it. Choosing a duration persists the snooze, hides the edge/island and shows confirmation. The alert returns after expiry.
 
 Previous/next week buttons, Today, arrow keys and swipes update the selected day. Saved weeks open immediately. An uncached week explicitly offers **Refresh to load this week**. Navigation does not fetch WFM; Refresh loads the selected week and retains today's alert schedule. Up to 12 weeks are saved.
 
-Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.18 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
+Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.19 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
 
-Verification is in the workspace's `verification/` folder. Real Chrome rendered production popup/content scripts using a browser API fixture and the production background handlers. Eight component screenshot comparisons had **zero differing pixels**, including settings, the live event and the selected day-off state. Reference components are composed from the two original HTML files; only settings' illustrative event/time text is adapted to the schedule fixture. Mouse/keyboard snooze, settings persistence, diagnostics, week boundaries and cache isolation are covered by automated checks. Authenticated WFM network access was not available in this environment.
+Verification is in the workspace's `verification/` folder. Real Chrome renders the production popup/content scripts using fixture schedules and browser APIs. Preservation comparisons check the schedule header, countdown, filters and footer against the original ZIP's popup. Functional checks cover the day picker, journey, movable ring, week navigation/cache, HTML settings presets/switches and diagnostics, themes, and mouse/keyboard snooze. Authenticated WFM network access was not available in this environment.
 
 ## Earlier release notes
 

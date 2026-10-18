@@ -6,7 +6,7 @@
   "scripts": {
     "design": "node scripts/prepare-design.mjs",
     "test": "node scripts/verify-ui.mjs && node scripts/verify-snooze.mjs && node scripts/verify-background.mjs && node scripts/report.mjs",
-    "package": "powershell -NoProfile -Command \"Compress-Archive -Path extension/* -DestinationPath wfm-schedule-companion-v0.4.18-flat.zip -Force\""
+    "package": "powershell -NoProfile -Command \"Compress-Archive -Path extension/* -DestinationPath wfm-schedule-companion-v0.4.19-flat.zip -Force\""
   },
   "keywords": [],
   "author": "",

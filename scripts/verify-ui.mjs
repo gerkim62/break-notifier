@@ -1,101 +1,110 @@
-import {mkdir,writeFile,readFile} from 'node:fs/promises';
+import {mkdir,writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {PNG} from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import {start,init,fixture,NOW} from './browser-harness.mjs';
-import './reference-composite.mjs';
-const env=await start(),report={visual:[],checks:[],errors:[]};
+import {start,init,NOW} from './browser-harness.mjs';
+
 await mkdir('verification',{recursive:true});
-const check=(name,fn)=>fn().then(()=>{report.checks.push(name);console.log('PASS '+name);});
-async function shot(page,selector,name){const el=page.locator(selector);return el.screenshot({path:'verification/'+name+'.png',animations:'disabled'});}
-async function compare(name,a,b){
- const x=PNG.sync.read(a),y=PNG.sync.read(b);
- assert.equal(x.width,y.width,name+' width');assert.equal(x.height,y.height,name+' height');
- const diff=new PNG({width:x.width,height:x.height});const pixels=pixelmatch(x.data,y.data,diff.data,x.width,x.height,{threshold:0,includeAA:true});
- await writeFile('verification/'+name+'-diff.png',PNG.sync.write(diff));
- const result={name,width:x.width,height:x.height,differingPixels:pixels,totalPixels:x.width*x.height};report.visual.push(result);console.log(result);
- assert.equal(pixels,0,name+' must match every pixel');
+await writeFile('verification/original.html','<!doctype html><html><head><base href="/extension/"><link id="visual-css" rel="stylesheet" href="design-today.css"><link rel="stylesheet" href="popup-integration.css"></head><body><div id="app"></div><script type="module">await import("/extension/background.mjs");await import("/scripts/fixtures/v0417-popup.mjs");</script></body></html>');
+const env=await start(),report={visual:[],checks:[],errors:[]};
+const check=async(name,fn)=>{await fn();report.checks.push(name);console.log('PASS '+name);};
+async function compare(name,ref,page,selector){
+ const a=PNG.sync.read(await ref.locator(selector).screenshot({path:`verification/reference-${name}.png`,animations:'disabled'}));
+ const b=PNG.sync.read(await page.locator(selector).screenshot({path:`verification/actual-${name}.png`,animations:'disabled'}));
+ assert.equal(a.width,b.width,name+' width');assert.equal(a.height,b.height,name+' height');
+ const diff=new PNG({width:a.width,height:a.height});const pixels=pixelmatch(a.data,b.data,diff.data,a.width,a.height,{threshold:0,includeAA:true});
+ await writeFile(`verification/${name}-diff.png`,PNG.sync.write(diff));
+ report.visual.push({name,width:a.width,height:a.height,differingPixels:pixels,totalPixels:a.width*a.height});
+ console.log(name+': '+pixels+' differing pixels');assert.equal(pixels,0,name+' must preserve the original');
 }
 try{
- const page=await env.browser.newPage({viewport:{width:300,height:600},deviceScaleFactor:1});
- page.on('pageerror',e=>report.errors.push(e.message));await init(page);
- await page.goto(env.base+'/extension/popup.html');await page.waitForSelector('.ev');
- await page.screenshot({path:'verification/popup.png',fullPage:true});
- const ref=await env.browser.newPage({viewport:{width:300,height:600},deviceScaleFactor:1});
- await ref.goto(env.base+'/verification/reference-combined.html');
- const referenceTimeline=await shot(ref,'#list','reference-journey');
- const actualTimeline=await shot(page,'#list','actual-journey');
- await compare('journey',referenceTimeline,actualTimeline);
- await compare('filter',await shot(ref,'.tabs','reference-filter'),await shot(page,'.tabs','actual-filter'));
- await compare('header',await shot(ref,'#view-schedule .top','reference-header'),await shot(page,'.top','actual-header'));
- await compare('alert-link',await shot(ref,'.alert-link','reference-alert-link'),await shot(page,'.alert-link','actual-alert-link'));
- const dayref=ref;
- // The design's .panel and the embedded .week-picker both have 16px vertical
- // and 10px outer horizontal padding. Capture that exact component region.
- const rrect=await dayref.locator('.week-picker').boundingBox(),arect=await page.locator('.week-picker').boundingBox();
- const rday=await dayref.screenshot({path:'verification/reference-days.png',clip:{x:0,y:rrect.y,width:300,height:rrect.height}});
- const aday=await page.screenshot({path:'verification/actual-days.png',clip:{x:0,y:arect.y,width:300,height:arect.height}});
- await compare('days',rday,aday);
- await check('Journey ticks preserve the same DOM nodes and move the live rail marker',async()=>{
-  await page.evaluate(()=>{window.__journeyCard=document.querySelector('.card');window.__journeyFill=document.querySelector('.fill.now');window.__journeyHeight=window.__journeyFill.style.height;});
+ const page=await env.browser.newPage({viewport:{width:380,height:600},deviceScaleFactor:1,colorScheme:'dark'});
+ const ref=await env.browser.newPage({viewport:{width:380,height:600},deviceScaleFactor:1,colorScheme:'dark'});
+ for(const p of [page,ref]){p.on('pageerror',e=>report.errors.push(e.message));await init(p);}
+ await Promise.all([page.goto(env.base+'/extension/popup.html'),ref.goto(env.base+'/verification/original.html')]);
+ await page.waitForSelector('.ev');await ref.waitForSelector('.tb .row');
+ await page.waitForTimeout(300);
+ await page.screenshot({path:'verification/popup.png'});await ref.screenshot({path:'verification/original-popup.png'});
+ await compare('header',ref,page,'.hd');await compare('footer',ref,page,'.ft');await compare('filter',ref,page,'.seg');
+ await compare('countdown',ref,page,'.hero');
+ await check('Original popup size and scroll boundaries are preserved',async()=>{
+  assert.deepEqual(await page.locator('.pop').evaluate(e=>({width:e.offsetWidth,height:e.offsetHeight})),{width:380,height:600});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),380);
+  assert.equal(await page.locator('.schedule-footer,.alert-link').count(),0);
+  assert.equal(await page.locator('.hero').count(),1);
+  assert.equal(await page.locator('.ft').boundingBox().then(b=>b.y+b.height),600);
+ });
+ await check('The journey retains its cards and travelling marker on clock ticks',async()=>{
+  await page.evaluate(()=>{window.__card=document.querySelector('.journey .card');window.__marker=document.querySelector('.journey .fill.now');window.__height=window.__marker.style.height;});
   await page.clock.setFixedTime(new Date('2026-10-18T10:41:00Z'));
   await page.waitForFunction(()=>document.querySelector('.fill.now')?.dataset.t==='1:41');
-  assert.equal(await page.evaluate(()=>window.__journeyCard===document.querySelector('.card')&&window.__journeyFill===document.querySelector('.fill.now')),true);
-  assert.notEqual(await page.evaluate(()=>window.__journeyHeight),await page.locator('.fill.now').evaluate(el=>el.style.height));
+  assert.equal(await page.evaluate(()=>window.__card===document.querySelector('.journey .card')&&window.__marker===document.querySelector('.fill.now')),true);
+  assert.notEqual(await page.evaluate(()=>window.__height),await page.locator('.fill.now').evaluate(e=>e.style.height));
+  await page.clock.setFixedTime(new Date(NOW));
  });
- await page.clock.setFixedTime(new Date('2026-10-18T11:10:00Z'));await page.waitForSelector('.ev.live');
- await ref.locator('#sim').fill('850');
- await compare('journey-live',await shot(ref,'#list','reference-journey-live'),await shot(page,'#list','actual-journey-live'));
- await page.clock.setFixedTime(new Date(NOW));await page.waitForSelector('.fill.now');
- await check('Previous/next weeks and Today preserve selection without WFM fetches',async()=>{
+ await check('Changing days moves the original single countdown into the header and back',async()=>{
+  await page.evaluate(()=>window.__ring=document.querySelector('#shared-countdown'));
+  await page.click('[data-date="2026-10-12"]');await page.waitForTimeout(600);
+  assert.equal(await page.locator('.hero').count(),0);assert.equal(await page.locator('#shared-countdown.docked').count(),1);
+  assert.equal(await page.evaluate(()=>window.__ring===document.querySelector('#shared-countdown')),true);
+  assert.equal(await page.locator('.journey .ev.done').count(),0);
+  await page.screenshot({path:'verification/other-day.png',animations:'disabled'});
+  await page.click('#today');await page.waitForTimeout(300);
+  assert.equal(await page.locator('.hero').count(),1);assert.equal(await page.locator('#shared-countdown.docked').count(),0);
+  assert.equal(await page.evaluate(()=>window.__ring===document.querySelector('#shared-countdown')),true);
+ });
+ await check('The day-picker thumb survives day selection for its spring transition',async()=>{
+  await page.evaluate(()=>window.__thumb=document.querySelector('#thumb'));
+  await page.click('[data-date="2026-10-13"]');assert.equal(await page.evaluate(()=>window.__thumb===document.querySelector('#thumb')),true);
+  assert.equal(await page.locator('#thumb').evaluate(e=>e.style.transform),'translateX(100%)');await page.click('#today');
+ });
+ await check('Previous/next weeks, keyboard boundaries and Today navigate without WFM requests',async()=>{
   await page.click('#prev');assert.equal(await page.locator('#range').textContent(),'Oct 5 – 11');assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-10-11');
-  assert.match(await page.locator('#empty').textContent(),/No saved schedule/);
-  await page.click('#next');assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-10-18');
-  await page.click('#next');assert.equal(await page.locator('#range').textContent(),'Oct 19 – 25');
-  await page.click('#today');assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-10-18');
+  assert.match(await page.locator('.journey .empty-hint').textContent(),/No saved schedule/);
+  await page.click('#next');await page.locator('.day[aria-pressed=true]').focus();await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-19');await page.keyboard.press('ArrowLeft');
+  assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-18');
+  await page.click('#next');await page.screenshot({path:'verification/week-navigation.png',animations:'disabled'});await page.click('#today');
   assert.equal(await page.evaluate(()=>window.__fetches.length),0);
  });
- await check('Arrow keys cross week boundaries and maintain focus',async()=>{
-  await page.locator('.day[aria-pressed=true]').focus();await page.keyboard.press('ArrowRight');assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-19');
-  await page.keyboard.press('ArrowLeft');assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-18');
- });
- await check('Week navigation spans months and years with valid date labels',async()=>{
+ await check('Week navigation crosses year boundaries',async()=>{
   for(let i=0;i<11;i++)await page.click('#next');
-  assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2027-01-03');
-  assert.equal(await page.locator('#range').textContent(),'Dec 28 2026 – Jan 3 2027');
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),300);
-  await page.click('#today');
+  assert.equal(await page.locator('#range').textContent(),'Dec 28 2026 – Jan 3 2027');await page.click('#today');
  });
- await check('Day off, queues, and All show real schedule states',async()=>{
-  await page.click('[data-date="2026-10-17"]');assert.match(await page.locator('#summary').textContent(),/day off/);assert.equal(await page.locator('.ev').count(),0);
-  await ref.locator('#track .day').nth(5).click();
-  await compare('days-off',await shot(ref,'.week-picker','reference-days-off'),await shot(page,'.week-picker','actual-days-off'));
-  await page.click('#today');await page.click('[data-filter="queues"]');assert.match(await page.locator('#empty').textContent(),/No queue changes/);
-  await page.click('[data-filter="all"]');assert.ok(await page.locator('.ev').count()>3);await page.click('[data-filter="special"]');
+ await check('Original day-off illustration and event filtering still work',async()=>{
+  await page.click('[data-date="2026-10-17"]');assert.equal(await page.locator('.dc').count(),1);assert.equal(await page.locator('.ev').count(),0);
+  await page.click('#today');await page.locator('.seg button').nth(1).click();assert.match(await page.locator('.empty-hint').textContent(),/No queue changes/);
+  await page.locator('.seg button').nth(2).click();assert.ok(await page.locator('.ev').count()>3);
+  await page.locator('.seg button').first().click();
  });
- await page.click('#settings');await page.waitForFunction(()=>document.querySelector('#diag-health')?.textContent==='All clear');
- await ref.click('[data-go="settings"]');
- // Match only illustrative content to the live fixture. No reference styling,
- // element sizing, positioning, or visibility is changed for comparisons.
- await ref.evaluate(()=>{document.querySelector('.preview span').innerHTML="For Lunch Break you'll be alerted at <b id='alert-at'>1:50 PM</b>";});
- await ref.screenshot({path:'verification/reference-settings.png',fullPage:true});
- await page.screenshot({path:'verification/actual-settings.png',fullPage:true});
- await compare('settings',await shot(ref,'#view-settings','reference-settings-component'),await shot(page,'#view-settings','actual-settings-component'));
- await check('Settings save presets, custom values and every switch',async()=>{
-  await page.click('[data-min="2"]');await page.waitForFunction(()=>window.__storage.local.wfm_companion_state_v1.settings.leadMinutes===2);
-  await page.locator('#lead').fill('17');await page.locator('#lead').blur();await page.waitForFunction(()=>window.__storage.local.wfm_companion_state_v1.settings.leadMinutes===17);
-  await page.locator('#lead').fill('0');await page.locator('#lead').blur();assert.equal(await page.locator('#lead').inputValue(),'17');
-  for(const b of await page.locator('[data-setting]').all()){const key=await b.getAttribute('data-setting'),before=await b.getAttribute('aria-checked');await b.click();await page.waitForFunction(({key,before})=>Boolean(window.__storage.local.wfm_companion_state_v1.settings[key])===(before!=='true'),{key,before});}
+ await page.clock.setFixedTime(new Date('2026-10-18T11:10:00Z'));await page.waitForSelector('.ev.live');
+ await page.screenshot({path:'verification/journey-live.png'});
+ await page.locator('.journey').evaluate(e=>e.scrollTop=e.scrollHeight);await page.screenshot({path:'verification/journey-scrolled.png'});
+ await page.clock.setFixedTime(new Date(NOW));
+ await Promise.all([page.locator('.ft button').click(),ref.locator('.ft button').click()]);
+ await page.waitForFunction(()=>document.querySelector('#diag-summary')?.textContent.includes('45 logs'));await page.waitForTimeout(250);
+ await page.screenshot({path:'verification/actual-settings.png'});
+ await check('HTML settings show only presets and persist presets, switches and diagnostics',async()=>{
+  assert.equal(await page.locator('.settings-reference').count(),1);
+  assert.equal(await page.locator('input[type=number],.cust,.lead-manual').count(),0);
+  assert.equal(await page.locator('[data-lead]').count(),3);
+  for(const minutes of [2,5,10]){await page.click(`[data-lead="${minutes}"]`);await page.waitForFunction(n=>window.__storage.local.wfm_companion_state_v1.settings.leadMinutes===n,minutes);assert.equal(await page.locator(`[data-lead="${minutes}"]`).getAttribute('aria-pressed'),'true');}
+  for(const toggle of await page.locator('[data-setting]').all()){
+   const key=await toggle.getAttribute('data-setting'),before=await toggle.getAttribute('aria-checked');await toggle.click();
+   await page.waitForFunction(({key,before})=>Boolean(window.__storage.local.wfm_companion_state_v1.settings[key])===(before!=='true'),{key,before});
+  }
+  const downloadPromise=page.waitForEvent('download');await page.click('#export');assert.match((await downloadPromise).suggestedFilename(),/wfm-diagnostics/);
+  await page.context().grantPermissions(['clipboard-read','clipboard-write']);await page.click('#copy-json');await page.waitForFunction(()=>document.querySelector('#diag-status').textContent==='Copied as JSON');
+  await page.click('#clear');await page.waitForFunction(()=>document.querySelector('#diag-summary').textContent.includes('0 logs'));
  });
- await check('Diagnostics export, copy and clear use real handlers',async()=>{
-  const downloadPromise=page.waitForEvent('download');await page.click('#export');const download=await downloadPromise;assert.match(download.suggestedFilename(),/wfm-diagnostics/);
-  await page.context().grantPermissions(['clipboard-read','clipboard-write']);await page.click('#copy');await page.waitForFunction(()=>document.querySelector('#diag-status').textContent==='Copied as JSON');assert.ok(JSON.parse(await page.evaluate(()=>navigator.clipboard.readText())).companionEvents);
-  await page.click('#clear');await page.waitForFunction(()=>document.querySelector('#diag-summary').textContent==='0 logs · 0 anomalies · 0 diffs');
- });
- await check('Manual refresh sends selected week and keeps cached data on failure',async()=>{
-  await page.click('#back');await page.click('#next');await page.click('#refresh');await page.waitForFunction(()=>window.__messages.some(m=>m.type==='WFM_REFRESH'));
+ await check('Manual refresh loads the selected week and retains the cached schedule on failure',async()=>{
+  await page.click('#back');await page.click('#next');await page.locator('.hd .btn').click();await page.waitForFunction(()=>window.__messages.some(m=>m.type==='WFM_REFRESH'));
   assert.equal(await page.evaluate(()=>window.__messages.find(m=>m.type==='WFM_REFRESH').date),'2026-10-25');
-  await page.waitForFunction(()=>document.querySelector('#refresh')?.textContent==='Refresh');await page.click('#today');assert.equal(await page.locator('.ev').count(),3);
+  await page.waitForFunction(()=>document.querySelector('.hd .btn')?.textContent.includes('Refresh')&&!document.querySelector('.hd .btn').disabled);await page.click('#today');assert.equal(await page.locator('.ev').count(),3);
+ });
+ await check('Original light theme is preserved outside the changed components',async()=>{
+  const light=await env.browser.newPage({viewport:{width:380,height:600},colorScheme:'light'});await init(light);await light.goto(env.base+'/extension/popup.html');await light.waitForSelector('.ev');
+  assert.equal(await light.locator('body').evaluate(e=>getComputedStyle(e).getPropertyValue('--bg').trim()),'#F3F5F9');await light.screenshot({path:'verification/popup-light.png'});await light.close();
  });
  assert.deepEqual(report.errors,[]);
 }catch(e){report.failure=e.stack;console.error(e);process.exitCode=1;}
