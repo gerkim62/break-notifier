@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Day switcher</title>
+<style>
+  :root{
+    --bg:#0A0F16; --surface:#111926; --line:#202B3B;
+    --text:#E9EEF6; --soft:#C5CFDE; --muted:#8C99AD; --accent:#8FA3FF; --amber:#F6BD4B;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{color:var(--text); font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased}
+  .panel{width:100%; min-width:240px; max-width:300px; margin:0 auto; padding:16px 10px}
+  button{font:inherit; color:inherit; cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  [hidden]{display:none !important}
+  svg{display:block}
+
+  .bar{display:flex; align-items:center; gap:6px; margin-bottom:10px}
+  .range{flex:1; min-width:0; font-size:15px; font-weight:700; letter-spacing:-.01em}
+  .range small{display:block; font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+  .today-chip{height:30px; padding:0 11px; border-radius:999px; border:0; background:rgba(143,163,255,.16); color:var(--accent); font-size:12px; font-weight:700}
+  .arrow{width:32px; height:32px; border-radius:50%; border:0; background:var(--surface); color:var(--soft); display:flex; align-items:center; justify-content:center; padding:0}
+
+  /* the track + springy thumb */
+  .track{
+    position:relative; display:grid; grid-template-columns:repeat(7,minmax(0,1fr));
+    padding:4px; border-radius:22px; background:var(--surface); border:1px solid var(--line);
+  }
+  .thumb{
+    position:absolute; top:4px; bottom:4px; left:4px; width:calc((100% - 8px) / 7);
+    border-radius:18px; background:var(--accent);
+    box-shadow:0 8px 22px rgba(143,163,255,.35);
+    transition:transform .5s cubic-bezier(.34,1.45,.64,1);
+  }
+  .day{
+    position:relative; z-index:1; height:64px; padding:0; border:0; border-radius:18px; background:transparent;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; color:var(--soft);
+  }
+  .dow{font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); line-height:1; transition:color .25s}
+  .num{font:600 16px/1 var(--mono); font-variant-numeric:tabular-nums; transition:color .25s}
+  .pip{width:4px; height:4px; border-radius:50%; background:var(--amber); transition:background .25s}
+  .day.off{opacity:.5}
+  .day.off .pip{width:8px; height:2px; border-radius:1px; background:var(--muted)}
+  .day.today .num{color:var(--accent)}
+
+  .day[aria-pressed="true"]{opacity:1}
+  .day[aria-pressed="true"] .dow{color:rgba(10,15,22,.65)}
+  .day[aria-pressed="true"] .num{color:#0A0F16}
+  .day[aria-pressed="true"] .pip{background:#0A0F16}
+  .day.off[aria-pressed="true"] .pip{background:#0A0F16}
+
+  .summary{margin-top:12px; text-align:center; font-size:12.5px; color:var(--muted); min-height:18px}
+  .summary b{color:var(--text); font-weight:600}
+  .summary.pop{animation:pop .3s ease-out}
+  @keyframes pop{from{opacity:0; transform:translateY(3px)} to{opacity:1; transform:none}}
+  @media (prefers-reduced-motion: reduce){ .thumb{transition:none} .summary.pop{animation:none} }
+</style>
+</head>
+<body>
+<main class="panel">
+
+  <div class="bar">
+    <div class="range"><small>Week</small><span id="range"></span></div>
+    <button class="today-chip" type="button" id="today" hidden>Today</button>
+    <button class="arrow" type="button" id="prev" aria-label="Previous week">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
+    <button class="arrow" type="button" id="next" aria-label="Next week">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+  </div>
+
+  <div class="track" id="track" role="group" aria-label="Days of the week">
+    <div class="thumb" id="thumb" aria-hidden="true"></div>
+  </div>
+  <div class="summary" id="summary" aria-live="polite"></div>
+
+</main>
+
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+
+  /* In the extension use: var TODAY = new Date();  and the Monday of the current week for MON0. */
+  var TODAY = new Date(2026, 9, 18);
+  var MON0 = new Date(2026, 9, 12);
+
+  var SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  var FULL = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  var weekOffset = 0;
+  var sel = (TODAY.getDay() + 6) % 7;
+  var btns = [];
+
+  function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+  function same(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
+  function dayOf(i) { return addDays(MON0, weekOffset * 7 + i); }
+
+  /* Demo data: replace with your real schedule. Saturdays are days off. */
+  function info(d) {
+    var wd = (d.getDay() + 6) % 7;
+    if (wd === 5) return { off: true };
+    return { off: false, breaks: 3, mins: 60 };
+  }
+
+  function buildWeek() {
+    var track = $('#track');
+    btns.forEach(function (b) { track.removeChild(b); });
+    btns = [];
+    for (var i = 0; i < 7; i++) {
+      var d = dayOf(i), inf = info(d);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'day' + (inf.off ? ' off' : '') + (same(d, TODAY) ? ' today' : '');
+      b.setAttribute('aria-pressed', 'false');
+      b.setAttribute('aria-label', FULL[i] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()] +
+        (inf.off ? ', day off' : ', ' + inf.breaks + ' breaks') + (same(d, TODAY) ? ', today' : ''));
+      if (same(d, TODAY)) b.setAttribute('aria-current', 'date');
+      b.innerHTML = '<span class="dow">' + SHORT[i] + '</span><span class="num">' + d.getDate() + '</span><span class="pip"></span>';
+      (function (idx) { b.addEventListener('click', function () { select(idx, false); }); })(i);
+      track.appendChild(b);
+      btns.push(b);
+    }
+    var a = dayOf(0), z = dayOf(6);
+    $('#range').textContent = MONTHS[a.getMonth()] + ' ' + a.getDate() + ' – ' +
+      (a.getMonth() === z.getMonth() ? '' : MONTHS[z.getMonth()] + ' ') + z.getDate();
+  }
+
+  function select(i, focus) {
+    sel = i;
+    btns.forEach(function (b, k) { b.setAttribute('aria-pressed', String(k === i)); });
+    $('#thumb').style.transform = 'translateX(' + (i * 100) + '%)';
+    var d = dayOf(i), inf = info(d), s = $('#summary');
+    s.innerHTML = '<b>' + FULL[i] + ', ' + d.getDate() + ' ' + MONTHS[d.getMonth()] + '</b> · ' +
+      (inf.off ? 'day off' : inf.breaks + ' breaks · ' + inf.mins + ' min');
+    s.classList.remove('pop'); void s.offsetWidth; s.classList.add('pop');
+    $('#today').hidden = same(d, TODAY);
+    if (focus) btns[i].focus();
+    /* hook: tell the rest of the panel which day was chosen -> onSelect(d); */
+  }
+
+  function step(dir, focus) {
+    var n = sel + dir;
+    if (n < 0) { weekOffset--; buildWeek(); n = 6; }
+    else if (n > 6) { weekOffset++; buildWeek(); n = 0; }
+    select(n, focus);
+  }
+
+  $('#prev').addEventListener('click', function () { weekOffset--; buildWeek(); select(sel, false); });
+  $('#next').addEventListener('click', function () { weekOffset++; buildWeek(); select(sel, false); });
+  $('#today').addEventListener('click', function () {
+    weekOffset = 0; buildWeek(); select((TODAY.getDay() + 6) % 7, true);
+  });
+
+  $('#track').addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    step(e.key === 'ArrowRight' ? 1 : -1, true);
+  });
+
+  var x0 = null;
+  $('#track').addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+  $('#track').addEventListener('touchend', function (e) {
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) >= 30) step(dx < 0 ? 1 : -1, false);
+  }, { passive: true });
+
+  buildWeek();
+  select(sel, false);
+})();
+</script>
+</body>
+</html>

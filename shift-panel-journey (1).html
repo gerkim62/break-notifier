@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shift panel</title>
+<style>
+  :root{
+    --bg:#0A0F16; --surface:#111926; --surface2:#0E1520; --line:#202B3B; --line2:#1A2332;
+    --text:#E9EEF6; --soft:#C5CFDE; --muted:#8C99AD; --accent:#8FA3FF;
+    --amber:#F6BD4B; --coral:#FF9B7A; --violet:#B69CFF; --green:#5BD6A4; --sky:#6CC4F0;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --dm:17px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg)}
+  body{color:var(--text); font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; -webkit-font-smoothing:antialiased}
+  .panel{width:100%; min-width:240px; max-width:300px; margin:0 auto; padding:12px 10px 16px}
+  button,input{font:inherit; color:inherit}
+  button,summary{cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  [hidden]{display:none !important}
+  svg{display:block; flex-shrink:0}
+
+  .top{display:flex; align-items:center; gap:8px; margin-bottom:12px}
+  .top h1{margin:0; font-size:18px; font-weight:700; letter-spacing:-.01em; flex:1; min-width:0}
+  .top .sub{font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:1px}
+  .icon-btn{width:40px; height:40px; border-radius:12px; border:1px solid var(--line); background:var(--surface); color:var(--soft); display:flex; align-items:center; justify-content:center}
+  .icon-btn.ghost{border-color:transparent; background:transparent}
+
+  .tabs{display:flex; gap:3px; padding:3px; border-radius:12px; background:var(--surface2); border:1px solid var(--line2)}
+  .tab{flex:1; height:36px; border:0; border-radius:9px; background:transparent; color:var(--muted); font-weight:600; font-size:12px; white-space:nowrap; padding:0 4px}
+  .tab.wide{flex:1.7}
+  .tab[aria-selected="true"]{background:#1B2638; color:var(--text)}
+  .count{display:inline-block; min-width:18px; height:18px; padding:0 5px; margin-left:6px; border-radius:999px; background:var(--accent); color:#0A0F16; font:500 11px/18px var(--mono); text-align:center; vertical-align:1px}
+
+  /* journey timeline */
+  .timeline{margin-top:14px}
+  .row{display:flex; gap:6px; align-items:stretch}
+  .time{width:32px; flex-shrink:0; padding-top:11px; text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .time b{display:block; font-size:12px; font-weight:500; line-height:1.2}
+  .time small{display:block; font-size:10px; color:var(--muted); margin-top:1px}
+  .ev.done .time{opacity:.5}
+
+  .rail{width:14px; flex-shrink:0; display:flex; flex-direction:column; align-items:center}
+  .dot{width:14px; height:14px; margin-top:var(--dm); border-radius:50%; flex-shrink:0; border:2px solid var(--c); background:var(--bg); display:flex; align-items:center; justify-content:center}
+  .ev.done .dot{background:var(--c)}
+  .ev.done .dot svg{color:var(--bg)}
+  .ev.live .dot{animation:pulse 1.8s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 var(--glow)} 100%{box-shadow:0 0 0 9px rgba(0,0,0,0)}}
+  @media (prefers-reduced-motion: reduce){ .ev.live .dot{animation:none; box-shadow:0 0 0 4px var(--glow)} }
+
+  .tail{width:2px; flex:1; margin-top:3px; border-radius:1px; background:var(--line); position:relative}
+  .fill{position:absolute; left:0; right:0; top:0; border-radius:1px; background:var(--accent)}
+  /* the travelling "now" marker, with its own clock label */
+  .fill.now::after{
+    content:""; position:absolute; left:50%; bottom:-5px; width:10px; height:10px; margin-left:-5px; border-radius:50%;
+    background:var(--accent); box-shadow:0 0 0 4px rgba(143,163,255,.25); z-index:1;
+  }
+  .fill.now::before{
+    content:attr(data-t); position:absolute; right:12px; bottom:-8px; padding:1px 4px; border-radius:6px;
+    background:var(--accent); color:#0A0F16; font:600 10px/1.3 var(--mono); white-space:nowrap; z-index:2;
+  }
+  .grail{width:14px; flex-shrink:0; display:flex; justify-content:center}
+  .grail i{width:2px; align-self:stretch; margin-bottom:calc(var(--dm) * -1); background:var(--line); position:relative; border-radius:1px}
+  .gap-row .time{padding:0}
+  .gtext{flex:1; min-height:34px; display:flex; align-items:center; font-size:12px; color:var(--muted)}
+  .gtext.on{color:var(--accent); font-weight:600}
+  .gap-row.done .gtext{opacity:.5}
+
+  .card{position:relative; overflow:hidden; flex:1; min-width:0; display:flex; align-items:center; gap:8px; padding:8px 9px; border-radius:14px; background:var(--surface); border:1px solid var(--line)}
+  .ev.done .card{opacity:.55}
+  .ev.live .card{border-color:var(--c); background:linear-gradient(0deg,var(--tint),var(--tint)),var(--surface)}
+  .tile{width:28px; height:28px; border-radius:9px; display:flex; align-items:center; justify-content:center; background:var(--tint); color:var(--c); flex-shrink:0}
+  .card .t{flex:1; min-width:0}
+  .card .name{font-size:13px; font-weight:700; line-height:1.2}
+  .card .meta{margin-top:2px; font-size:11px; color:var(--muted)}
+  .chip{padding:2px 6px; border-radius:999px; background:var(--surface2); border:1px solid var(--line2); font:11px var(--mono); color:var(--soft); flex-shrink:0; white-space:nowrap}
+  .ev.live .chip{color:var(--c); border-color:var(--c)}
+  .bar{position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(255,255,255,.06)}
+  .bar b{display:block; height:100%; background:var(--c)}
+  .total{margin:12px 0 0 52px; font-size:12px; color:var(--muted)}
+  .empty{margin-top:16px; padding:28px 16px; text-align:center; color:var(--muted); font-size:13px; border:1px dashed var(--line); border-radius:14px}
+
+  .alert-link{width:100%; margin-top:16px; height:46px; padding:0 12px; border-radius:14px; background:var(--surface); border:1px solid var(--line); display:flex; align-items:center; gap:10px; text-align:left}
+  .alert-link strong{font-size:13px}
+  .alert-link span{flex:1; font-size:12px; color:var(--muted)}
+
+  .sim{margin-top:12px; font-size:11.5px; color:var(--muted)}
+  .sim summary{padding:6px 0}
+  .simrow{display:flex; align-items:center; gap:8px}
+  .simrow input{flex:1; min-width:0; accent-color:var(--accent)}
+  .simrow output{font:11px var(--mono); color:var(--soft); min-width:58px; text-align:right}
+  .sim .link{margin-top:2px; background:none; border:0; padding:6px 0; color:var(--accent); font-weight:600; font-size:12px}
+
+  /* settings (compact) */
+  .box{padding:12px; border-radius:14px; background:var(--surface); border:1px solid var(--line)}
+  .box h2{margin:0 0 8px; font-size:13px; font-weight:700}
+  .presets{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px}
+  .preset{height:38px; border-radius:10px; border:1px solid #2A374B; background:var(--surface2); font:500 12px var(--mono); padding:0}
+  .preset[aria-pressed="true"]{border-color:var(--accent); background:rgba(143,163,255,.14); color:var(--accent)}
+  .cust{display:flex; align-items:center; gap:3px; height:38px; padding:0 8px; border-radius:10px; border:1px solid #2A374B; background:var(--surface2)}
+  .cust:focus-within{border-color:var(--accent)}
+  .cust input{border:0; outline:0; background:transparent; width:100%; min-width:0; padding:0; text-align:right; font:500 12px var(--mono)}
+  .cust span{font:12px var(--mono); color:var(--muted)}
+  .preview{display:flex; gap:8px; align-items:center; margin-top:10px; font-size:12px; color:var(--muted)}
+  .preview b{color:var(--accent); font-weight:600}
+
+  .list{margin-top:10px; border-radius:14px; background:var(--surface); border:1px solid var(--line); overflow:hidden}
+  .opt{display:flex; align-items:center; gap:10px; padding:7px 12px}
+  .opt + .opt{border-top:1px solid var(--line2)}
+  .opt .tile{width:26px; height:26px; border-radius:8px}
+  .opt .t{flex:1; min-width:0}
+  .opt .name{font-size:13px; font-weight:600; line-height:1.2}
+  .opt .meta{margin-top:1px; font-size:11px; color:var(--muted); line-height:1.25}
+  .label{margin:14px 0 6px 2px; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+  .box h2 small{display:block; margin-top:2px; font-size:11px; font-weight:400; color:var(--muted)}
+  .diag .dh{color:var(--soft); font-size:13px}
+  .sw{width:42px; height:24px; padding:2px; border-radius:999px; border:1px solid transparent; flex-shrink:0; background:var(--accent); display:flex; justify-content:flex-end; align-items:center}
+  .sw i{width:18px; height:18px; border-radius:50%; background:#0A0F16; display:block}
+  .sw[aria-checked="false"]{background:#1E2A3C; border-color:#34425A; justify-content:flex-start}
+  .sw[aria-checked="false"] i{background:var(--muted)}
+
+  .diag{margin-top:10px; padding:10px 12px; border-radius:14px; background:var(--surface2); border:1px solid var(--line2); font-size:12px; color:var(--muted)}
+  .diag .ok{color:var(--green); font-weight:700}
+  .actions{display:flex; align-items:center; gap:14px; margin-top:2px}
+  .btn{background:none; border:0; padding:8px 0; color:var(--accent); font-size:12.5px; font-weight:600}
+  .btn.danger{margin-left:auto; color:#FF9B9B}
+</style>
+</head>
+<body>
+<main class="panel">
+
+  <!-- ============ SCHEDULE ============ -->
+  <section id="view-schedule" aria-labelledby="h-sched">
+    <header class="top">
+      <h1 id="h-sched"><span class="sub" id="today-sub">Today</span>Sunday, 18 Oct</h1>
+      <button class="icon-btn" type="button" data-go="settings" aria-label="Alert settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+      </button>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Schedule filter">
+      <button class="tab wide" role="tab" aria-selected="true" data-tab="breaks">Breaks &amp; events<span class="count">3</span></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="queues">Queues</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="all">All</button>
+    </div>
+
+    <div id="list" class="timeline"></div>
+    <div id="empty" class="empty" hidden>No queue changes on your schedule today.</div>
+
+    <button class="alert-link" type="button" data-go="settings">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4l2-2z"/><path d="M10 21h4"/></svg>
+      <strong>Alerts on</strong>
+      <span id="lead-summary">10 min before</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+    </button>
+
+    <!-- Demo only: scrub the clock. Delete this block in production and set USE_LIVE = true. -->
+    <details class="sim" open>
+      <summary>Preview the day</summary>
+      <div class="simrow">
+        <input id="sim" type="range" min="660" max="1050" step="5" value="820" aria-label="Preview time of day">
+        <output id="simout" for="sim"></output>
+      </div>
+      <button class="link" type="button" id="live">Use live time</button>
+    </details>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section id="view-settings" aria-labelledby="h-set" hidden>
+    <header class="top">
+      <button class="icon-btn ghost" type="button" data-go="schedule" aria-label="Back to schedule">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <h1 id="h-set">Alert settings</h1>
+    </header>
+
+    <div class="box">
+      <h2>Remind me before<small>Pick a preset or type your own minutes</small></h2>
+      <div class="presets">
+        <button class="preset" type="button" data-min="2" aria-pressed="false">2 min</button>
+        <button class="preset" type="button" data-min="5" aria-pressed="false">5 min</button>
+        <button class="preset" type="button" data-min="10" aria-pressed="true">10 min</button>
+        <label class="cust"><input id="lead" type="number" inputmode="numeric" min="1" max="120" value="10" aria-label="Custom minutes"><span>min</span></label>
+      </div>
+      <div class="preview">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4l2-2z"/><path d="M10 21h4"/></svg>
+        <span>For Tea Break 1 you'll be alerted at <b id="alert-at">11:15 AM</b></span>
+      </div>
+    </div>
+
+    <div class="label">Display</div>
+    <div class="list" style="margin-top:0">
+      <div class="opt">
+        <div class="tile" style="--c:var(--accent);--tint:rgba(143,163,255,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><rect x="7" y="8" width="10" height="8" rx="1.5"/></svg></div>
+        <div class="t"><div class="name">Page-edge alert ring</div><div class="meta">Glowing border around the page</div></div>
+        <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Page-edge alert ring"><i></i></button>
+      </div>
+    </div>
+
+    <div class="label">Alert me about</div>
+    <div class="list" style="margin-top:0">
+      <div class="opt">
+        <div class="tile" style="--c:var(--amber);--tint:rgba(246,189,75,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M16 11h2a2 2 0 0 1 0 4h-2"/><path d="M8 3v3M12 3v3"/></svg></div>
+        <div class="t"><div class="name">Breaks &amp; meals</div><div class="meta">Tea breaks and lunch</div></div>
+        <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Breaks and meals"><i></i></button>
+      </div>
+      <div class="opt">
+        <div class="tile" style="--c:var(--violet);--tint:rgba(182,156,255,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5c2 .7 3.5 2.7 3.5 5.5"/></svg></div>
+        <div class="t"><div class="name">Coaching &amp; meetings</div><div class="meta">Coaching sessions and meetings</div></div>
+        <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Coaching and meetings"><i></i></button>
+      </div>
+      <div class="opt">
+        <div class="tile" style="--c:var(--green);--tint:rgba(91,214,164,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"/><path d="M5 4h12l-2.5 4L17 12H5"/></svg></div>
+        <div class="t"><div class="name">Shift end</div><div class="meta">Heads-up before your shift ends</div></div>
+        <button class="sw" type="button" role="switch" aria-checked="true" aria-label="Shift end"><i></i></button>
+      </div>
+      <div class="opt">
+        <div class="tile" style="--c:var(--sky);--tint:rgba(108,196,240,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h13M13 4l4 4-4 4"/><path d="M20 16H7M11 12l-4 4 4 4"/></svg></div>
+        <div class="t"><div class="name">Queue-switch toast</div><div class="meta">Pop-up when your queue changes</div></div>
+        <button class="sw" type="button" role="switch" aria-checked="false" aria-label="Queue-switch toast"><i></i></button>
+      </div>
+    </div>
+
+    <div class="diag">
+      <b class="dh">Diagnostics</b> · <span class="ok">All clear</span>
+      <div>45 logs · 0 anomalies · 0 diffs</div>
+      <div class="actions">
+        <button class="btn" type="button" id="export">Export</button>
+        <button class="btn" type="button" id="copy">Copy JSON</button>
+        <button class="btn danger" type="button" id="clear">Clear</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* schedule data, minutes since midnight */
+  var EVENTS = [
+    { name: 'Tea Break 1', kind: 'break', label: 'Break', start: 11 * 60 + 25, end: 11 * 60 + 35 },
+    { name: 'Lunch Break', kind: 'meal',  label: 'Meal',  start: 14 * 60,      end: 14 * 60 + 40 },
+    { name: 'Tea Break 2', kind: 'break', label: 'Break', start: 16 * 60 + 50, end: 17 * 60 }
+  ];
+
+  /* Set to true in the extension so it follows the real clock. */
+  var USE_LIVE = false;
+  var simNow = 13 * 60 + 40;
+
+  var CUP = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h12v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V9z"/><path d="M16 11h2a2 2 0 0 1 0 4h-2"/><path d="M8 3v3M12 3v3"/></svg>';
+  var FORK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v6a2.5 2.5 0 0 0 5 0V3M8.5 11v10M17 3c-2 2-3 4.5-3 7.5h3V21"/></svg>';
+  var CHECK = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function parts(m) {
+    m = Math.floor(m);
+    var h = Math.floor(m / 60), mm = m % 60, ap = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12; if (h12 === 0) h12 = 12;
+    return { hm: h12 + ':' + pad(mm), ap: ap };
+  }
+  function t12(m) { var p = parts(m); return p.hm + ' ' + p.ap; }
+  function dur(m) {
+    m = Math.max(0, Math.round(m));
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60), r = m % 60;
+    return r ? h + 'h ' + pad(r) + 'm' : h + 'h';
+  }
+  function nowMinutes() {
+    if (!USE_LIVE) return simNow;
+    var d = new Date(); return d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+  }
+
+  function render() {
+    var now = nowMinutes();
+    var nowLabel = parts(now).hm;
+    var html = '', i;
+    for (i = 0; i < EVENTS.length; i++) {
+      var e = EVENTS[i];
+      var state = now >= e.end ? 'done' : (now >= e.start ? 'live' : 'next');
+      var p = state === 'done' ? 1 : (state === 'live' ? (now - e.start) / (e.end - e.start) : 0);
+      var meal = e.kind === 'meal';
+      var c = meal ? 'var(--coral)' : 'var(--amber)';
+      var tint = meal ? 'rgba(255,155,122,.14)' : 'rgba(246,189,75,.14)';
+      var glow = meal ? 'rgba(255,155,122,.45)' : 'rgba(246,189,75,.45)';
+
+      if (i > 0) {
+        var gs = EVENTS[i - 1].end, ge = e.start;
+        var gp = now >= ge ? 1 : (now <= gs ? 0 : (now - gs) / (ge - gs));
+        var inGap = now > gs && now < ge;
+        var gtext = inGap ? dur(ge - now) + ' until ' + e.name : dur(ge - gs) + ' free';
+        /* while travelling, keep the marker 12px from the line start and 18px from the next dot */
+        var gh = inGap ? 'calc(12px + ' + gp + ' * (100% - 30px))' : (gp * 100) + '%';
+        html += '<div class="row gap-row ' + (now >= ge ? 'done' : '') + '">' +
+          '<div class="time"></div>' +
+          '<div class="grail"><i><b class="fill' + (inGap ? ' now' : '') + '" data-t="' + nowLabel + '" style="height:' + gh + '"></b></i></div>' +
+          '<div class="gtext' + (inGap ? ' on' : '') + '">' + gtext + '</div></div>';
+      }
+
+      var tp = parts(e.start);
+      var meta = state === 'done' ? e.label + ' · done' : (state === 'live' ? 'Ends ' + t12(e.end) : e.label + ' · ends ' + t12(e.end));
+      var chip = state === 'live' ? dur(e.end - now) + ' left' : dur(e.end - e.start);
+      var tail = i < EVENTS.length - 1
+        ? '<div class="tail"><b class="fill" style="height:' + (p * 100) + '%"></b></div>' : '';
+
+      html += '<div class="row ev ' + state + '" style="--c:' + c + ';--tint:' + tint + ';--glow:' + glow + '">' +
+        '<div class="time"><b>' + tp.hm + '</b><small>' + tp.ap + '</small></div>' +
+        '<div class="rail"><div class="dot">' + (state === 'done' ? CHECK : '') + '</div>' + tail + '</div>' +
+        '<div class="card"><div class="tile">' + (meal ? FORK : CUP) + '</div>' +
+        '<div class="t"><div class="name">' + e.name + '</div><div class="meta">' + meta + '</div></div>' +
+        '<div class="chip">' + chip + '</div>' +
+        (state === 'live' ? '<div class="bar"><b style="width:' + (p * 100) + '%"></b></div>' : '') +
+        '</div></div>';
+    }
+    html += '<div class="total">3 breaks · 60 min total today</div>';
+    $('#list').innerHTML = html;
+
+    $('#today-sub').textContent = 'Today · ' + t12(now);
+    $('#simout').textContent = t12(now);
+    $('#sim').value = Math.floor(now);
+  }
+
+  function show(view) {
+    $('#view-schedule').hidden = view !== 'schedule';
+    $('#view-settings').hidden = view !== 'settings';
+    window.scrollTo(0, 0);
+  }
+  $$('[data-go]').forEach(function (b) {
+    b.addEventListener('click', function () { show(b.getAttribute('data-go')); });
+  });
+  $$('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      $$('.tab').forEach(function (x) { x.setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+      var queues = t.getAttribute('data-tab') === 'queues';
+      $('#list').hidden = queues;
+      $('#empty').hidden = !queues;
+    });
+  });
+
+  $('#sim').addEventListener('input', function (ev) {
+    USE_LIVE = false; simNow = parseInt(ev.target.value, 10); render();
+  });
+  $('#live').addEventListener('click', function () { USE_LIVE = true; render(); });
+  setInterval(function () { if (USE_LIVE) render(); }, 20000);
+
+  var input = $('#lead');
+  function setLead(n) {
+    n = Math.max(1, Math.min(120, parseInt(n, 10) || 0));
+    if (!n) return;
+    $$('.preset').forEach(function (p) {
+      p.setAttribute('aria-pressed', String(parseInt(p.getAttribute('data-min'), 10) === n));
+    });
+    $('#alert-at').textContent = t12(EVENTS[0].start - n);
+    $('#lead-summary').textContent = n + ' min before';
+  }
+  $$('.preset').forEach(function (p) {
+    p.addEventListener('click', function () { input.value = p.getAttribute('data-min'); setLead(input.value); });
+  });
+  input.addEventListener('input', function () { setLead(input.value); });
+
+  $$('.sw').forEach(function (s) {
+    s.addEventListener('click', function () {
+      s.setAttribute('aria-checked', s.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    });
+  });
+
+  /* diagnostics: wire to your extension's real handlers */
+  $('#export').addEventListener('click', function () { /* TODO */ });
+  $('#copy').addEventListener('click', function () { /* TODO */ });
+  $('#clear').addEventListener('click', function () { /* TODO */ });
+
+  render();
+})();
+</script>
+</body>
+</html>

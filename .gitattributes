@@ -1,0 +1,15 @@
+# Consistent text files across Windows and other development environments.
+* text=auto eol=lf
+
+# Keep image and archive bytes unchanged.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.zip binary
+
+# Native Windows scripts require CRLF line endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf

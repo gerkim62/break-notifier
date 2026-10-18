@@ -1,0 +1,73 @@
+{
+  "manifest_version": 3,
+  "name": "WFM Schedule Companion (Local)",
+  "version": "0.4.18",
+  "description": "Read WFM schedules, browse saved weeks, follow your event journey, and get silent page-edge alerts.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://svdt1ipccwfm09/*"
+  ],
+  "background": {
+    "service_worker": "background.mjs",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon-16.png",
+      "32": "icon-32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "ring.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "http://svdt1ipccwfm09/wfm/*"
+      ],
+      "js": [
+        "wfm-banner.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "companion-core.mjs",
+        "queue-toast.mjs"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    },
+    {
+      "resources": [
+        "wfm-dom-reader.mjs",
+        "wfm-dom-compare.mjs"
+      ],
+      "matches": [
+        "http://svdt1ipccwfm09/*"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "icon-16.png",
+    "32": "icon-32.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  }
+}
