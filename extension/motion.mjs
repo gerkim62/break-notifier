@@ -20,8 +20,41 @@ export function restoreMotion(snapshot){
   if(from!=='none')animate(node,[{transform:from},{transform:node.style.transform}]);
  }
 }
-// Replacing content has no spatial direction. Keep the layout still and use
-// only a short dissolve; selection and countdown motion retain real targets.
-export function fadeContent(node,{duration=120}={}){
- animate(node,[{opacity:.65},{opacity:1}],{duration,easing:'ease-out'});
+let contentTransition=null;
+export function cancelContentTransition(){contentTransition?.();contentTransition=null;}
+preference.addEventListener('change',()=>{if(preference.matches)cancelContentTransition();});
+
+// Freeze the departing view before rendering. A closed shadow root keeps the
+// inert visual copy out of the live controls, focus order and DOM queries.
+export function captureView(node){
+ if(!node||reducedMotion())return null;
+ const rect=node.getBoundingClientRect(),copy=node.cloneNode(true);
+ const originals=[node,...node.querySelectorAll('*')],copies=[copy,...copy.querySelectorAll('*')];
+ originals.forEach((original,i)=>{
+  const target=copies[i],style=getComputedStyle(original);
+  for(const key of style)target.style.setProperty(key,style.getPropertyValue(key));
+  target.removeAttribute('id');
+ });
+ const viewport=node.closest('.schedule-scroll')?.getBoundingClientRect(),top=Math.max(viewport?.top??0,rect.y,0),bottom=Math.min(viewport?.bottom??600,rect.bottom,600);
+ Object.assign(copy.style,{margin:'0',width:rect.width+'px',height:rect.height+'px',position:'relative',left:'0',top:rect.y-top+'px',transform:'none'});
+ const layer=document.createElement('div');layer.dataset.viewSnapshot='';layer.inert=true;layer.setAttribute('aria-hidden','true');
+ Object.assign(layer.style,{position:'fixed',left:rect.x+'px',top:top+'px',width:rect.width+'px',height:Math.max(0,bottom-top)+'px',overflow:'hidden',pointerEvents:'none',zIndex:'40'});
+ const shadow=layer.attachShadow({mode:'closed'});shadow.append(copy);
+ // Preserve scroll offsets without moving the underlying schedule.
+ return {layer,copy,mount(){document.body.append(layer);originals.forEach((original,i)=>{copies[i].scrollTop=original.scrollTop;copies[i].scrollLeft=original.scrollLeft;});}};
+}
+export function slideView(node,snapshot,direction,{stack=false}={}){
+ cancelContentTransition();
+ if(!node||reducedMotion())return;
+ const distance=node.getBoundingClientRect().width,sign=direction<0?-1:1;
+ const timing={duration:360,easing:'cubic-bezier(.22,.8,.25,1)'};
+ snapshot?.mount();
+ const incomingDistance=distance*(stack&&sign<0 ? .28 : 1),outgoingDistance=distance*(stack&&sign>0 ? .28 : 1);
+ const position=node.style.position,zIndex=node.style.zIndex;
+ if(stack&&sign>0){node.style.position='relative';node.style.zIndex='41';}
+ const incoming=animate(node,[{transform:`translateX(${sign*incomingDistance}px)`},{transform:'translateX(0px)'}],timing);
+ const outgoing=snapshot&&animate(snapshot.copy,[{transform:'translateX(0px)'},{transform:`translateX(${-sign*outgoingDistance}px)`}],timing);
+ const clean=()=>{incoming?.cancel();outgoing?.cancel();snapshot?.layer.remove();node.style.position=position;node.style.zIndex=zIndex;};
+ contentTransition=clean;
+ incoming?.finished.catch(()=>{}).finally(()=>{clean();if(contentTransition===clean)contentTransition=null;});
 }

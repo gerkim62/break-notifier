@@ -29,8 +29,12 @@ export function weekPicker(container,{start,selected,today,week,settings,onSelec
  thumb.style.transform=`translateX(${Math.round((Date.parse(selected)-Date.parse(start))/86400000)*100}%)`;
  container.querySelector('#today').hidden=selected===today;
  container.querySelector('#today').onclick=()=>onSelect(today,true);
- container.querySelector('#prev').onclick=()=>onSelect(addDays(selected,-7),false);
- container.querySelector('#next').onclick=()=>onSelect(addDays(selected,7),false);
+ const navigateWeek=direction=>{
+  const targetStart=addDays(start,direction*7),targetEnd=addDays(targetStart,6);
+  onSelect(today>=targetStart&&today<=targetEnd?today:direction>0?targetStart:targetEnd,false);
+ };
+ container.querySelector('#prev').onclick=()=>navigateWeek(-1);
+ container.querySelector('#next').onclick=()=>navigateWeek(1);
  track.onkeydown=e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();onSelect(e.key==='Home'?start:e.key==='End'?end:addDays(selected,e.key==='ArrowRight'?1:-1),true);};
  let x=null;
  track.ontouchstart=e=>{x=e.touches[0].clientX;};

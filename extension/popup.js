@@ -2,7 +2,7 @@ import {SCREENS} from './design-screens.mjs';
 import {weekPicker,journey} from './schedule-components.mjs';
 import {icon,countdownRing,paintRing} from './ui-icons.mjs';
 import {PausableToastTimer} from './queue-toast.mjs';
-import {captureMotion,restoreMotion,fadeContent} from './motion.mjs';
+import {captureMotion,restoreMotion,captureView,slideView,cancelContentTransition} from './motion.mjs';
 import {bindTheme} from './theme.mjs';
 import {settingsWithDefaults,localDate,localTime,buildDaySegments,contextForDay,formatDuration,dayForDate,eventBounds,wallTimeToEpoch,segmentProgress,alertColor} from './companion-core.mjs';
 import {scheduleFreshness,scheduleRefreshDue,scheduleRefreshFailure} from './schedule-freshness.mjs';
@@ -12,7 +12,19 @@ const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const send=message=>new Promise((resolve,reject)=>chrome.runtime.sendMessage(message,response=>{
  const error=chrome.runtime.lastError;if(error)reject(new Error('Background worker unavailable'));else resolve(response);
 }));
-const app=$('#app'),style=$('#visual-css');
+const app=$('#app');
+// Read bundled styles once so switching views never paints with the previous
+// view's geometry while a replacement stylesheet is still loading.
+const screenStyles=Object.fromEntries(await Promise.all(Object.keys(SCREENS).map(async variant=>{
+ const response=await fetch(new URL(`design-${variant}.css`,import.meta.url));
+ if(!response.ok)throw new Error(`Cannot load ${variant} styles`);
+ return [variant,await response.text()];
+})));
+const style=document.createElement('style');style.id='visual-css';$('#visual-css').replaceWith(style);
+function visualStyle(variant){
+ if(style.dataset.variant===variant)return;
+ style.textContent=screenStyles[variant];style.dataset.variant=variant;
+}
 const setPopupTheme=bindTheme(document.documentElement);
 let state=null,selectedDate=null,filter='special',mode='schedule',loginBusy=false,activeVariant='',activeDate='',statusTimer=null;
 let lastInfoOpen=false;
@@ -98,19 +110,21 @@ function freshnessNotice(){
 }
 
 
-// Content replacement stays at its final position. Only explicit navigation
-// dissolves briefly; initial loads, async updates and clock ticks stay still.
+// Explicit navigation follows the date/tab order. Background updates stay still.
 function changePopupMode(nextMode){
  if(mode===nextMode)return;
+ const snapshot=captureView($('.pop',app));
  if(mode==='schedule')savedScheduleScroll=$('.schedule-scroll',app)?.scrollTop??0;
  mode=nextMode;render();
- fadeContent(mode==='settings'?$('.settings-body',app):$('.schedule-scroll',app),{duration:150});
+ slideView($('.pop',app),snapshot,mode==='settings'?1:-1,{stack:true});
 }
 function changeScheduleView(change,kind='day'){
+ const before=kind==='day'?(selectedDate??today()):['special','queues','all'].indexOf(filter);
+ const snapshot=captureView($('.tb',app)??$('.dc',app));
  change();
+ const after=kind==='day'?selectedDate:['special','queues','all'].indexOf(filter);
  render();
- fadeContent($('.tb',app)??$('.dc',app));
- if(kind==='day')fadeContent($('.hero',app));
+ slideView($('.tb',app)??$('.dc',app),snapshot,after>before?1:-1);
 }
 
 function tabs(){
@@ -227,7 +241,7 @@ function installScreen(variant){
  const sameDate=activeDate===(selectedDate??today());
  retainedPicker=$('.week-picker',app);
  retainedFilters=$('.seg',app)??retainedFilters;
- activeVariant=variant;app.innerHTML=SCREENS[variant];style.href=`design-${variant}.css`;
+ activeVariant=variant;visualStyle(variant);app.innerHTML=SCREENS[variant];
  const popup=$('.pop',app),scroller=h('div','schedule-scroll'),foot=$('.ft',popup);
  scroller.tabIndex=0;scroller.setAttribute('role','region');scroller.setAttribute('aria-label','Schedule');
  popup.classList.add('schedule-view');
@@ -302,6 +316,7 @@ function syncLiveRing(){
  else dest.classList.add('header-ring-slot');
 }
 function render(){
+ cancelContentTransition();
  syncAppearance();
  if(mode==='settings'){hideLiveRing();renderSettings();return;}
  selectedDate??=today();
@@ -417,7 +432,7 @@ async function refreshDiagnosticCounts(){
 }
 function renderSettings(){
  // Use the supplied HTML settings layout, with preset-only reminder timing.
- activeVariant='settings';style.href='design-today.css';
+ activeVariant='settings';visualStyle('today');
  app.innerHTML=`<div class="pop settings-reference"><header class="settings-heading"><button class="settings-back" id="back" type="button" aria-label="Back to schedule">${icon('back',20,2)}</button><h1>Alert settings</h1></header>
  <div class="settings-body">
   <section class="box"><h2>Remind me before<small>Choose when to get a heads-up</small></h2><div class="presets" role="group" aria-label="Reminder timing"><button class="preset" type="button" data-lead="2">2 min</button><button class="preset" type="button" data-lead="5">5 min</button><button class="preset" type="button" data-lead="10">10 min</button></div><div class="preview">${icon('bell',14,1.9)}<span id="lead-note"></span></div></section>

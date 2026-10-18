@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WFM Schedule Companion (Local)",
-  "version": "0.4.28",
+  "version": "0.4.31",
   "description": "Load WFM schedules as you browse weeks, follow your event journey, and get silent page-edge alerts.",
   "permissions": [
     "storage",

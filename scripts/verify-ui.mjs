@@ -89,13 +89,38 @@ try{
   await page.click('#next');await page.locator('.day[aria-pressed=true]').focus();await page.keyboard.press('ArrowRight');
   assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-19');await page.keyboard.press('ArrowLeft');
   assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-18');
-  await page.click('#next');await page.screenshot({path:'verification/week-navigation.png',animations:'disabled'});await page.click('#today');
+  await page.click('#next');assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-10-19');await page.screenshot({path:'verification/week-navigation.png',animations:'disabled'});await page.click('#today');
   assert.equal(await page.evaluate(()=>window.__messages.filter(m=>m.type==='WFM_REFRESH'&&m.date==='2026-10-18').length),0);
   await page.evaluate(()=>window.__scheduleDelayMs=0);
  });
  await check('Week navigation crosses year boundaries',async()=>{
   for(let i=0;i<11;i++)await page.click('#next');
-  assert.equal(await page.locator('#range').textContent(),'Dec 28 2026 – Jan 3 2027');await page.click('#today');
+  assert.equal(await page.locator('#range').textContent(),'Dec 28 2026 – Jan 3 2027');
+  assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-12-28');
+  await page.click('#next');assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2027-01-04');
+  await page.click('#prev');assert.equal(await page.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2027-01-03');await page.click('#today');
+ });
+ await check('Week arrows select the boundary day or today, while explicit day choices survive updates',async()=>{
+  const midweek=await env.browser.newPage({viewport:{width:380,height:600},colorScheme:'dark'});
+  midweek.on('pageerror',e=>report.errors.push(e.message));await init(midweek);
+  await midweek.clock.setFixedTime(new Date('2026-10-15T10:40:00Z'));
+  await midweek.goto(env.base+'/extension/popup.html');await midweek.waitForSelector('.ev');
+  const selected=()=>midweek.locator('.day[aria-pressed=true]').getAttribute('data-date');
+  assert.equal(await selected(),'2026-10-15');
+  await midweek.evaluate(()=>window.__scheduleDelayMs=400);
+  await midweek.click('#next');assert.equal(await selected(),'2026-10-19');
+  await midweek.click('[data-date="2026-10-22"]');assert.equal(await selected(),'2026-10-22');
+  await midweek.waitForFunction(()=>window.__storage.local.wfm_companion_state_v1.weeks?.['2026-10-19']);
+  assert.equal(await selected(),'2026-10-22');
+  await midweek.click('#prev');assert.equal(await selected(),'2026-10-15');
+  await midweek.click('#prev');assert.equal(await selected(),'2026-10-11');
+  await midweek.click('[data-date="2026-10-07"]');assert.equal(await selected(),'2026-10-07');
+  await midweek.click('#next');assert.equal(await selected(),'2026-10-15');
+  await midweek.click('[data-date="2026-10-13"]');assert.equal(await selected(),'2026-10-13');
+  await midweek.evaluate(async()=>{window.__oldScroller=document.querySelector('.schedule-scroll');await chrome.storage.local.set({wfm_companion_state_v1:{...window.__storage.local.wfm_companion_state_v1,lastUpdated:Date.now()}});});
+  await midweek.waitForFunction(()=>document.querySelector('.schedule-scroll')!==window.__oldScroller);
+  assert.equal(await selected(),'2026-10-13');await midweek.click('#today');assert.equal(await selected(),'2026-10-15');
+  await midweek.waitForTimeout(450);await midweek.screenshot({path:'verification/week-current-day.png',animations:'disabled'});await midweek.close();
  });
  await check('Original day-off illustration and event filtering still work',async()=>{
   await page.click('[data-date="2026-10-17"]');assert.equal(await page.locator('.dc').count(),1);assert.equal(await page.locator('.ev').count(),0);
@@ -125,7 +150,7 @@ try{
  });
  await check('Manual refresh loads the selected week and retains the cached schedule on failure',async()=>{
   await page.click('#back');await page.click('#next');await page.evaluate(()=>window.__scheduleError='network_error');await page.locator('.hd .btn').click();await page.waitForFunction(()=>window.__messages.some(m=>m.type==='WFM_REFRESH'&&m.trigger==='manual'));
-  assert.equal(await page.evaluate(()=>window.__messages.findLast(m=>m.type==='WFM_REFRESH'&&m.trigger==='manual').date),'2026-10-25');
+  assert.equal(await page.evaluate(()=>window.__messages.findLast(m=>m.type==='WFM_REFRESH'&&m.trigger==='manual').date),'2026-10-19');
   await page.waitForFunction(()=>document.querySelector('.hd .btn')?.textContent.includes('Refresh')&&!document.querySelector('.hd .btn').disabled);await page.click('#today');assert.equal(await page.locator('.ev').count(),3);
  });
  await check('Light mode renders a light schedule surface',async()=>{

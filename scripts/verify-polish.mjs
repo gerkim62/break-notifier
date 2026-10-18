@@ -58,31 +58,63 @@ try{
   assert.ok(cards.every(card=>card.x>=0&&card.right<=380));
   for(let i=1;i<cards.length;i++)assert.ok(cards[i].top-cards[i-1].bottom>=8);
  });
- await check('Day, filter and Settings content stays in place through short dissolves; updates do not replay entrances',async()=>{
+ await check('Tabs, dates and Settings slide in the navigation direction, clean up, and keep background updates still',async()=>{
   const quiet=await open();await quiet.goto(env.base+'/extension/popup.html');await quiet.waitForSelector('.ev');
-  const inspect=async selector=>quiet.locator(selector).evaluate(node=>{
-   const animation=node.getAnimations()[0];if(!animation)throw Error('Missing content transition');
+  const inspect=async(selector,sign)=>quiet.locator(selector).evaluate((node,sign)=>{
+   const animation=node.getAnimations()[0];if(!animation)throw Error('Missing slide transition');
    animation.pause();const frames=[];
-   for(const time of [0,60,animation.effect.getTiming().duration]){animation.currentTime=time;const r=node.getBoundingClientRect();frames.push({x:r.x,y:r.y,width:r.width,height:r.height,transform:getComputedStyle(node).transform});}
-   return {frames,duration:animation.effect.getTiming().duration,keys:animation.effect.getKeyframes()};
-  });
+   for(const time of [0,100,animation.effect.getTiming().duration]){animation.currentTime=time;const m=new DOMMatrix(getComputedStyle(node).transform);frames.push({x:m.m41,y:m.m42});}
+   if(!(frames[0].x*sign>0&&frames[1].x*sign>0&&Math.abs(frames[1].x)<Math.abs(frames[0].x)&&frames[2].x===0&&frames.every(frame=>frame.y===0)))throw Error('Wrong slide direction or vertical movement: '+JSON.stringify(frames));
+   animation.currentTime=100;
+   const outgoing=window.__closedShadow?.firstElementChild?.getAnimations()[0];
+   if(outgoing){outgoing.pause();outgoing.currentTime=100;const keys=outgoing.effect.getKeyframes();if(!(new DOMMatrix(keys.at(-1).transform).m41*sign<0))throw Error('Departing view moves the wrong way');}
+   return {duration:animation.effect.getTiming().duration};
+  },sign);
   assert.equal(await quiet.locator('.journey').evaluate(node=>node.getAnimations().length),0);
   await quiet.evaluate(()=>document.querySelectorAll('.seg button')[2].click());
-  const filter=await inspect('.journey');assert.ok(filter.duration<=150);assert.deepEqual(filter.frames[0],filter.frames[1]);assert.deepEqual(filter.frames[1],filter.frames[2]);
-  assert.ok(filter.keys.every(frame=>!('transform' in frame)));assert.equal(await quiet.locator('.seg').evaluate(node=>node.getAnimations().length),0);
-  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-12"]').click());
-  const day=await inspect('.journey');assert.deepEqual(day.frames[0],day.frames[1]);assert.deepEqual(day.frames[1],day.frames[2]);
-  await quiet.screenshot({path:'verification/content-stays-in-place.png'});
-  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-17"]').click());
-  const off=await inspect('.dc');assert.deepEqual(off.frames[0],off.frames[1]);assert.deepEqual(off.frames[1],off.frames[2]);
-  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-12"]').click());
-  await quiet.evaluate(()=>document.querySelector('.ft button').click());
-  const settings=await inspect('.settings-body');assert.ok(settings.duration<=150);assert.deepEqual(settings.frames[0],settings.frames[1]);assert.deepEqual(settings.frames[1],settings.frames[2]);
-  await quiet.evaluate(()=>document.querySelector('#back').click());await quiet.waitForTimeout(180);
+  assert.equal((await inspect('.journey',1)).duration,360);
+  assert.equal(await quiet.locator('[data-view-snapshot]').count(),1);
+  assert.equal(await quiet.locator('[data-view-snapshot]').getAttribute('aria-hidden'),'true');
+  await quiet.screenshot({path:'verification/tab-slide-forward.png'});
+  await quiet.evaluate(()=>document.querySelectorAll('.seg button')[0].click());await inspect('.journey',-1);
+  assert.equal(await quiet.locator('[data-view-snapshot]').count(),1);
+  await quiet.screenshot({path:'verification/tab-slide-back.png'});
+  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-12"]').click());await inspect('.journey',-1);
+  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-13"]').click());await inspect('.journey',1);
+  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-17"]').click());await inspect('.dc',1);
+  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-12"]').click());await inspect('.journey',-1);
+  await quiet.evaluate(()=>document.querySelector('.ft button').click());await inspect('.pop',1);
+  await quiet.screenshot({path:'verification/settings-slide-forward.png'});
+  await quiet.evaluate(()=>document.querySelector('#back').click());await inspect('.pop',-1);
+  await quiet.screenshot({path:'verification/settings-slide-back.png'});
+  await quiet.evaluate(()=>{for(const animation of document.querySelector('.pop').getAnimations())animation.finish();});
+  await quiet.waitForFunction(()=>!document.querySelector('[data-view-snapshot]'));
   await quiet.evaluate(async()=>chrome.storage.local.set({wfm_companion_state_v1:{...window.__storage.local.wfm_companion_state_v1,lastUpdated:Date.now()}}));
   assert.equal(await quiet.locator('.journey').evaluate(node=>node.getAnimations().length),0);
   await quiet.clock.setFixedTime(new Date('2026-10-18T10:41:00Z'));await quiet.waitForTimeout(1100);
+  assert.equal(await quiet.locator('.journey').evaluate(node=>node.getAnimations().length),0);
+  assert.equal(await quiet.locator('[data-view-snapshot]').count(),0);
+  await quiet.evaluate(()=>document.querySelectorAll('.seg button')[2].click());await quiet.emulateMedia({reducedMotion:'reduce'});
+  await quiet.waitForFunction(()=>!document.querySelector('[data-view-snapshot]'));
   assert.equal(await quiet.locator('.journey').evaluate(node=>node.getAnimations().length),0);await quiet.close();
+ });
+ await check('Day-off illustration has its final height from the first frame, including cold styles and repeated navigation',async()=>{
+  const stable=await open();let offReads=0;
+  await stable.route('**/design-off.css',async route=>{offReads++;await new Promise(resolve=>setTimeout(resolve,450));await route.continue();});
+  await stable.goto(env.base+'/extension/popup.html');await stable.waitForSelector('.ev');
+  for(const from of ['2026-10-18','2026-10-12']){
+   await stable.click(`[data-date="${from}"]`);await stable.waitForTimeout(400);
+   const frames=await stable.evaluate(async()=>{
+    document.querySelector('[data-date="2026-10-17"]').click();const frames=[];
+    for(let i=0;i<32;i++){
+     const card=document.querySelector('.dc').getBoundingClientRect(),svg=document.querySelector('.dc svg').getBoundingClientRect();
+     frames.push({height:card.height,y:card.y,svgHeight:svg.height,svgY:svg.y});await new Promise(requestAnimationFrame);
+    }
+    return frames;
+   });
+   assert.ok(frames[0].height>300);for(const frame of frames)assert.deepEqual(frame,frames[0]);
+  }
+  assert.equal(offReads,1);await stable.screenshot({path:'verification/day-off-stable-height.png',animations:'disabled'});await stable.close();
  });
  await check('Reduced motion switches tabs and docks the ring immediately',async()=>{
   const reduced=await open({reducedMotion:'reduce'});await reduced.goto(env.base+'/extension/popup.html');await reduced.waitForSelector('.ev');
@@ -112,7 +144,7 @@ try{
   assert.match(await loading.locator('.missing-week').textContent(),/Could not reach WFM/);await loading.waitForTimeout(400);await loading.screenshot({path:'verification/schedule-load-error.png'});
   await loading.locator('.missing-week .btn').focus();await loading.waitForTimeout(1100);assert.equal(await loading.locator('.missing-week .btn:focus').count(),1);
   await loading.evaluate(()=>window.__scheduleError=null);await loading.locator('.missing-week .btn').click();await loading.waitForSelector('.ev');
-  assert.equal(await loading.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-11-01');await loading.close();
+  assert.equal(await loading.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-10-26');await loading.close();
  });
  await check('A successfully loaded empty week says No schedule detected',async()=>{
   const empty=await open({}, {...fixture(),week:null});await empty.goto(env.base+'/extension/popup.html');
@@ -135,7 +167,7 @@ try{
   await login.waitForFunction(()=>document.querySelector('.hd .btn').getAttribute('aria-busy')==='false');
   await login.evaluate(()=>window.__wfmStatus=401);await login.click('#next');await login.waitForSelector('.missing-week .btn');
   await login.evaluate(()=>window.__wfmStatus=0);await login.locator('.missing-week .btn').click();await login.waitForSelector('.ev');
-  assert.equal(await login.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-10-25');
+  assert.equal(await login.locator('.day[aria-pressed=true]').getAttribute('data-date'),'2026-10-19');
   assert.ok(await login.evaluate(()=>window.__storage.local.wfm_companion_state_v1.weeks?.['2026-10-19']));await login.close();
  });
  assert.deepEqual(report.errors,[]);
