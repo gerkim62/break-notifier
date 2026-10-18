@@ -32,6 +32,10 @@ try{
  for(let n=0;n<15;n++)await module.refresh({date:new Date(Date.parse('2026-10-19')+n*7*86400000).toISOString().slice(0,10)});
  current=data.local.wfm_companion_state_v1;assert.ok(Object.keys(current.weeks).length<=12);assert.ok(current.weeks['2026-10-12']);assert.ok(current.weeks['2027-01-25']);
  report.checks.push('Week cache stays bounded and retains both current and requested weeks');
+ const before=requests.length;
+ await Promise.all([module.refresh({trigger:'popup',date:'2026-10-25'}),module.refresh({date:'2026-10-19'}),module.refresh({date:'2026-10-21'})]);
+ assert.equal(requests.length,before+1);
+ report.checks.push('Concurrent requests for the same week share a single RPC read');
  for(const check of report.checks)console.log('PASS '+check);
 }catch(e){report.failure=e.stack;console.error(e);process.exitCode=1;}
 finally{Date.now=originalNow;await writeFile('verification/background-report.json',JSON.stringify(report,null,2));}

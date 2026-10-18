@@ -1,14 +1,24 @@
-# WFM Schedule Companion v0.4.19
+# WFM Schedule Companion v0.4.23
+
+Filter tabs now use an animated underline with arrow-key, Home and End navigation. Activity cards have 8 px of separation. Gap labels describe time between activities rather than claiming free time, and empty filters say **No schedule detected.** The picker, underline and countdown ring share interruptible motion; repeated selections continue from the currently displayed position. Content changes use restrained fades and movement. Reduced motion applies at load and when the system preference changes.
+
+Opening the popup refreshes the current week while showing cached data immediately. The first visit to each other week loads it automatically, with loading, retry and login states. Each week loads once per popup session unless Refresh is clicked. Concurrent requests for the same week share one RPC read; other weeks are serialized so responses cannot overwrite each other's cache. Late responses preserve the selected date, and loading another week preserves today's alert data. Browser startup, badge alarms and passive page observations do not fetch WFM. This replaces the earlier manual-only popup/week loading policy.
 
 This release restores the original v0.4.17 popup as the base. The day selector and events list use the supplied HTML references, with week navigation added. Settings follows the supplied compact HTML layout with three reminder presets (2, 5 and 10 minutes); the manual minutes input is omitted. The original 380×600 layout, schedule header, movable countdown ring, filter controls, footer, light/dark themes, and existing empty/day-off screens are preserved. Component styles are scoped in `schedule-components.css` rather than applied globally. The journey follows the real clock and retains card/rail nodes between ticks.
 
+The schedule now scrolls as one page, allowing the header, day picker, countdown and filters to leave the viewport as you read. Only the small action footer stays visible. Compact day buttons and event card padding leave more room for activities. The countdown ring moves and clips with its slot while scrolling. Data updates and returning from Settings keep your reading position.
+
+Both ring sizes use the same SVG geometry, relative stroke weight and live progress. The old fixed decorative header arc and blurred countdown glow are removed. Normalized progress and rounded-cap compensation keep the arc ends clean near completion. Inactive rings use a matching dotted style and correctly resume live progress when a shift begins. Countdown text scales to fit longer durations.
+
+Session-expired notifications include a **Log in** button that runs the existing explicit login check. Toasts remain visible while hovered or keyboard-focused and throughout an in-progress action; their remaining timeout resumes afterwards. Notifications sit above the action footer and suppress duplicate action clicks.
+
 Snooze now settles the island's initial width before pointer interaction. Enter/Space reliably opens the menu, arrow keys select enabled durations, and Escape closes it. Choosing a duration persists the snooze, hides the edge/island and shows confirmation. The alert returns after expiry.
 
-Previous/next week buttons, Today, arrow keys and swipes update the selected day. Saved weeks open immediately. An uncached week explicitly offers **Refresh to load this week**. Navigation does not fetch WFM; Refresh loads the selected week and retains today's alert schedule. Up to 12 weeks are saved.
+Previous/next week buttons, Today, arrow keys and swipes update the selected day. Cached weeks appear immediately as the first-visit load runs. Refresh retries or updates the selected week and retains today's alert schedule. Up to 12 weeks are saved.
 
-Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.19 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
+Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.23 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
 
-Verification is in the workspace's `verification/` folder. Real Chrome renders the production popup/content scripts using fixture schedules and browser APIs. Preservation comparisons check the schedule header, countdown, filters and footer against the original ZIP's popup. Functional checks cover the day picker, journey, movable ring, week navigation/cache, HTML settings presets/switches and diagnostics, themes, and mouse/keyboard snooze. Authenticated WFM network access was not available in this environment.
+Verification is in the workspace's `verification/` folder. Real Chrome renders the production popup/content scripts using fixture schedules and browser APIs. A footer comparison checks its appearance against the original ZIP's popup. Long-schedule checks verify whole-page scrolling, access to the final activity, countdown alignment, and preserved scroll position. Other checks cover the day picker, journey, movable ring, week navigation/cache, HTML settings presets/switches and diagnostics, themes, and mouse/keyboard snooze. Authenticated WFM network access was not available in this environment.
 
 ## Earlier release notes
 
@@ -56,7 +66,7 @@ Build based on v0.4.3 with the user's **WFM Schedule Companion UI Design v2**. T
 2. In `edge://extensions` or `chrome://extensions`, enable Developer mode and choose **Load unpacked**.
 3. Select the extracted folder containing `manifest.json`.
 4. **Remove or disable the previous 0.4.3 extension**, to avoid duplicate content-script banners/toasts.
-5. Open the popup; only click Refresh or Login when you explicitly want a WFM request.
+5. Open the popup to load the current week. Other weeks load on their first visit. Use Refresh to retry and Login if your WFM session has expired.
 
 No WFM credentials or private user schedules are included in this package or screenshots.
 

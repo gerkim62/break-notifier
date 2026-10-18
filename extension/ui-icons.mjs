@@ -12,3 +12,19 @@ const paths={
  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
 };
 export function icon(name,size=18,stroke=1.8){return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]??paths.flag}</svg>`;}
+
+// Both sizes use the same geometry. pathLength normalizes progress without
+// rounding the circumference or changing stroke thickness as the arc grows.
+export function countdownRing(size=100){return `<svg class="countdown-svg" aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 20 20"><circle class="ring-track" cx="10" cy="10" r="7.5" pathLength="100" fill="none" stroke="var(--ln)" stroke-width="2"/><circle class="live-stroke" cx="10" cy="10" r="7.5" pathLength="100" fill="none" stroke="#30D6AC" stroke-width="2" stroke-linecap="round" stroke-dasharray="0 100" opacity="0" transform="rotate(-90 10 10)"/></svg>`;}
+
+export function paintRing(svg,progress){
+ if(!svg)return;
+ const arc=svg.querySelector('.live-stroke'),p=Math.max(0,Math.min(1,progress));
+ arc.setAttribute('opacity',p===0?'0':'1');
+ if(p===1){arc.setAttribute('stroke-dasharray','none');arc.setAttribute('stroke-dashoffset','0');return;}
+ // Rounded caps add one stroke-width to the visible arc; compensate so a
+ // nearly finished countdown retains a clean gap instead of overlapping caps.
+ const cap=2/(2*Math.PI*7.5)*100;
+ arc.setAttribute('stroke-dasharray',`${Math.max(.001,p*100-cap)} 100`);
+ arc.setAttribute('stroke-dashoffset',String(-cap/2));
+}

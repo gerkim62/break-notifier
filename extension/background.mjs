@@ -14,6 +14,7 @@ const LEGACY_POLL_ALARM='wfm-companion-poll';
 const BADGE_ALARM='wfm-companion-badge';
 const WFM_URL='http://svdt1ipccwfm09:8070/wfm/Agent?#Schedule;view=MY_SCHEDULE';
 let fetchInProgress=null;
+const weekRequests=new Map();
 let openTabInProgress=null;
 let loginInProgress=null;
 let diagQueue=Promise.resolve();
@@ -96,12 +97,15 @@ async function updateBadge(){
   if(active)await chrome.action.setBadgeBackgroundColor({color:'#ea5268'});
  }catch{}
 }
-// Only a direct user interaction may issue WFM RPC requests.
+// Popup visits, week navigation, Refresh and Login may request a week.
+// Startup, badge alarms and passive page observations never fetch WFM.
 export async function refresh({trigger='manual',date:requestedDate}={}){
- // Refresh is explicit. Browsing cached weeks never issues a WFM request.
  if(requestedDate!==undefined){try{isoWeek(requestedDate);}catch{return {ok:false,reason:'invalid_date'};}}
- if(fetchInProgress){await fetchInProgress;return refresh({trigger,date:requestedDate});}
- fetchInProgress=(async()=>{
+ const initial=await getState(),requested=requestedDate??localDate(Date.now(),initial.settings.timeZone),key=isoWeek(requested)[0];
+ if(weekRequests.has(key))return weekRequests.get(key);
+ const previous=fetchInProgress;
+ const request=(async()=>{
+  if(previous)await previous.catch(()=>{});
   const state=await getState();const now=Date.now(),currentDate=localDate(now,state.settings.timeZone),date=requestedDate??currentDate;
   const result=await getWeekSchedule(date);
   if(!result.ok){
@@ -131,8 +135,9 @@ export async function refresh({trigger='manual',date:requestedDate}={}){
   await patchState(next);
   await logUI('schedule_applied',{trigger,dayCount:week.days.length,eventCount:week.days.reduce((n,d)=>n+d.events.length,0),changedToday:Number(changedToday)});
   await updateBadge();await broadcast();return {ok:true,changedToday};
- })().finally(()=>{fetchInProgress=null;});
- return fetchInProgress;
+ })().finally(()=>{weekRequests.delete(key);if(fetchInProgress===request)fetchInProgress=null;});
+ weekRequests.set(key,request);fetchInProgress=request;
+ return request;
 }
 
 // Invoked only by the content script when WFM renders its My Schedule DOM.
@@ -207,7 +212,7 @@ async function loginCheck(){
 async function handleMessage(message,sender){
  const type=message?.type;
  if(type==='WFM_GET_STATE')return {ok:true,state:await getState()};
- if(type==='WFM_REFRESH')return refresh({trigger:'manual',date:message.date});
+ if(type==='WFM_REFRESH')return refresh({trigger:message.trigger==='popup'?'popup':'manual',date:message.date});
  if(type==='WFM_LOGIN_CHECK')return loginCheck();
  if(type==='WFM_DOM_OBSERVED')return observeDom(message,sender);
  if(type==='WFM_DOM_STATUS'){

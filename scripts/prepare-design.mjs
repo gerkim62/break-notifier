@@ -21,11 +21,12 @@ writeFileSync('extension/schedule-components.css',`
 .week-picker button{font:inherit;color:inherit;cursor:pointer}
 .journey :focus-visible,.week-picker :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .week-picker [hidden]{display:none!important}
-.week-picker{margin:2px 12px 10px;flex:none;overflow:hidden}
+.week-picker{margin:2px 12px 10px;flex:none;overflow:visible}
 .week-picker{
  ${dayCSS}
  .week-range{font-size:13px}
  .week-bar{height:30px;margin-bottom:8px}
+ .day{height:52px}
  .arrow{background:var(--bg)}
  .track{overflow:visible}
  .day.unknown .pip{background:transparent;border:1px solid var(--muted)}
@@ -38,7 +39,12 @@ writeFileSync('extension/schedule-components.css',`
  .card .bar{display:block;width:auto;margin:0;align-self:auto}
  ${timelineCSS}
  .timeline{margin-top:0}
+ .ev{padding-bottom:8px}
+ .ev .tail{margin-bottom:-8px}
+ .ev:has(+.gap-row){padding-bottom:0}
+ .ev:has(+.gap-row) .tail{margin-bottom:0}
  .card .name{overflow-wrap:anywhere}
+ .card{padding-top:8px;padding-bottom:8px}
  .fill,.bar b{transition:height 1s linear,width 1s linear}
  @media(prefers-reduced-motion:reduce){.fill,.bar b{transition:none}}
 }

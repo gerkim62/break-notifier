@@ -1,5 +1,12 @@
 /* Integrational styling only; supplied design CSS owns the popup's visual geometry. */
 html,body{margin:0;padding:0;width:380px;height:600px;overflow:hidden}
+/* One schedule scrollbar: the header and picker move away with the events.
+   Keep only the small footer available for Settings and Open WFM. */
+.schedule-view>.schedule-scroll{position:relative;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
+.schedule-scroll>.top,.schedule-scroll>.hero,.schedule-scroll>.seg{flex:none}
+.schedule-scroll>.tb{flex:none;overflow:visible;min-height:0}
+.schedule-view>.ft{flex:none}
+.schedule-scroll .shared-countdown{position:absolute!important}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 button:disabled{opacity:.7;cursor:wait}
 .tb .empty-hint{padding:22px 16px;text-align:center;color:var(--mu);font-size:12px}
@@ -44,11 +51,17 @@ button:active:not(:disabled){filter:brightness(.96)}
 .schedule-info-popover strong{font-weight:700;color:var(--tx)}
 .schedule-info-popover[hidden]{display:none}
 .hd{position:relative}
-.popup-toast{position:fixed;z-index:80;left:50%;bottom:18px;transform:translateX(-50%) translateY(8px);opacity:0;pointer-events:none;box-sizing:border-box;width:max-content;max-width:calc(100vw - 28px);padding:10px 16px;border-radius:999px;background:var(--tx);color:var(--bg);font:600 12px/1.4 Figtree,system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.24);transition:opacity .16s,transform .16s}
+.popup-toast{position:fixed;z-index:80;left:50%;bottom:58px;transform:translateX(-50%) translateY(8px);opacity:0;visibility:hidden;pointer-events:none;display:flex;align-items:center;gap:12px;box-sizing:border-box;width:max-content;max-width:calc(100vw - 28px);padding:10px 16px;border-radius:999px;background:var(--tx);color:var(--bg);font:600 12px/1.4 Figtree,system-ui,sans-serif;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.24);transition:opacity .16s,transform .16s}
 .popup-toast.error{background:#8d2d38;color:white}
-.popup-toast.visible{opacity:1;transform:translateX(-50%) translateY(0)}
+.popup-toast.visible{opacity:1;visibility:visible;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+.popup-toast[hidden]{display:none}
+.popup-toast.has-action{padding:10px 12px;border-radius:14px;text-align:left}
+.toast-message{min-width:0;overflow-wrap:anywhere}
+.toast-action{flex:none;padding:7px 12px;border:1px solid currentColor;border-radius:999px;background:rgba(255,255,255,.12);color:inherit;font:inherit;white-space:nowrap;cursor:pointer}
+.toast-action:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+.toast-action:disabled{cursor:progress}
 /* A real static dotted idle ring; never a progress or spinner indicator. */
-.hero .ring.inactive-ring svg circle:first-child{stroke-dasharray:1 7;stroke-width:4;stroke-linecap:round;stroke:var(--mu);stroke-opacity:.48}
+.hero .ring.inactive-ring svg circle:first-child{stroke-dasharray:1 7.333333333333333;stroke-width:1;stroke-linecap:round;stroke:var(--mu);stroke-opacity:.48}
 .hero .ring.inactive-ring svg circle:nth-child(2){opacity:0}
 .hero .ring.inactive-ring .ct{visibility:hidden}
 .hero .ring.live-ring-slot{visibility:hidden}
@@ -58,14 +71,14 @@ button:active:not(:disabled){filter:brightness(.96)}
 .shared-countdown[hidden]{display:none}
 .shared-countdown.no-transition{transition:none!important}
 .shared-countdown.docked .ct{visibility:hidden}
-.shared-countdown svg{width:100px;height:100px;padding:4px;box-sizing:border-box}
+.shared-countdown svg{width:100px;height:100px;padding:0;box-sizing:border-box}
 .shared-countdown .ct{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px;box-sizing:border-box;text-align:center}
 @media(prefers-reduced-motion:reduce){
  .shared-countdown,.popup-toast,.hd .btn,.tabs .tab,.lead-chips button,.setting-block button{transition:none!important}
  .hd .btn .spinning{animation:none}
 }
 
-.hd .lg.idle-header-ring svg circle:first-child{stroke:var(--mu);stroke-opacity:.55;stroke-width:2;stroke-dasharray:1 4;stroke-linecap:round}
+.hd .lg.idle-header-ring svg circle:first-child{stroke:var(--mu);stroke-opacity:.48;stroke-width:1;stroke-dasharray:1 7.333333333333333;stroke-linecap:round}
 .hd .lg.idle-header-ring svg circle:nth-child(2){opacity:0}
 .so2 .pr:disabled{display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .so2 .pr:disabled::before{content:"";display:block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:refresh-rotate .8s linear infinite}
@@ -89,18 +102,28 @@ button:active:not(:disabled){filter:brightness(.96)}
 
 /* v0.4.7 — both rings are circular, without rectangular glow clipping. */
 .shared-countdown,.shared-countdown svg{overflow:visible!important}
-.shared-countdown .live-stroke{filter:drop-shadow(0 0 6px rgba(48,214,172,.52))}
+.shared-countdown .live-stroke{filter:none}
 .shared-countdown.docked .ct{visibility:visible;display:flex}
-.shared-countdown.docked .ct b{font:700 33px/1 "IBM Plex Mono",monospace!important;letter-spacing:-.055em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;color:var(--tx);text-shadow:0 0 12px rgba(48,214,172,.18)}
+.shared-countdown.docked .ct b{font-family:"IBM Plex Mono",monospace;line-height:1;font-weight:700;letter-spacing:-.03em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;color:var(--tx);text-shadow:none}
 .shared-countdown.docked .ct span{display:none}
 .hd .lg.header-ring-slot{background:transparent!important;border-color:transparent!important;box-shadow:none!important}
 .hd .lg.header-ring-slot svg{visibility:hidden}
 .hd .lg{transition:background-color .2s,border-color .2s}
 .shared-countdown .ct b{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
-.shared-countdown:not(.docked) .ct b{padding-inline:.08em}
+.shared-countdown:not(.docked) .ct b{padding-inline:0}
 .shared-countdown:not(.docked) .ct span{margin-top:2px}
 
 /* No rectangular glow from the icon slot: the stroke alone casts the glow. */
 
 /* v0.4.9: keep five-character countdown text clear of the unchanged ring stroke. */
-.shared-countdown:not(.docked) .ct b{max-width:70px;white-space:nowrap;line-height:1.1;text-align:center}
+.shared-countdown:not(.docked) .ct b{max-width:64px;white-space:nowrap;line-height:1.1;text-align:center}
+
+/* Underline tabs share one moving indicator rather than three filled pills. */
+.schedule-view .seg{position:relative;display:flex;margin:8px 12px 12px;padding:0;border-radius:0;border-bottom:1px solid var(--ln);background:transparent;box-shadow:none}
+.schedule-view .seg button{flex:1;min-width:0;height:40px;padding:0 4px;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--mu);font-size:12px;transition:color .18s ease-out}
+.schedule-view .seg button.on{background:transparent;box-shadow:none;color:var(--ac)}
+.schedule-view .seg button:not(.on):hover{color:var(--tx)}
+.filter-underline{position:absolute;bottom:-1px;left:0;width:calc(100% / 3);height:2px;border-radius:2px;background:var(--ac);pointer-events:none;transform-origin:0 50%}
+.shared-countdown,.week-picker .thumb{transition:none}
+.missing-week .empty-hint .btn{margin-top:14px}
+.missing-week .empty-hint{padding:32px 16px}

@@ -21,7 +21,7 @@ export function weekPicker(container,{start,selected,today,week,settings,onSelec
   b.setAttribute('aria-pressed',String(date===selected));
   if(date===today)b.setAttribute('aria-current','date');
   const breaks=buildDaySegments(day,settings).filter(s=>s.type==='break').length;
-  b.setAttribute('aria-label',label(date,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+(off?', day off':unknown?', no saved schedule':`, ${breaks} breaks`)+(date===today?', today':''));
+  b.setAttribute('aria-label',label(date,{weekday:'long',day:'numeric',month:'long',year:'numeric'})+(off?', day off':unknown?', schedule not detected':`, ${breaks} breaks`)+(date===today?', today':''));
   if(!reuse)b.append(make('span','dow',label(date,{weekday:'short'})),make('span','num',String(Number(date.slice(8)))),make('span','pip'));
   b.onclick=()=>onSelect(date,false);if(!reuse)track.append(b);
  }
@@ -64,7 +64,7 @@ export function journey(container,{day,settings,filter,isToday,isPast,now=Date.n
    const row=make('div','row gap-row '+(gp===1?'done':''));
    row.innerHTML=`<div class="time"></div><div class="grail"><i><b class="fill${inGap?' now':''}"></b></i></div><div class="gtext${inGap?' on':''}"></div>`;
    const fill=row.querySelector('.fill');fill.style.height=inGap?`calc(12px + ${gp} * (100% - 30px))`:`${gp*100}%`;fill.dataset.t=stamp(now).replace(/ [AP]M$/,'');
-   row.querySelector('.gtext').textContent=inGap?duration(ge-now)+' until '+s.name:duration(ge-gs)+' free';next.append(row);
+   row.querySelector('.gtext').textContent=inGap?duration(ge-now)+' until '+s.name:duration(ge-gs)+' between activities';next.append(row);
   }
   const meal=s.stateType===5||/lunch|meal/i.test(s.name);
   const [color,rgb,symbol,text]=s.type==='break'?(meal?['coral','255,155,122','meal','Meal']:['amber','246,189,75','cup','Break']):s.type==='exception'?['violet','182,156,255','people','Event']:s.type==='queue'?['sky','108,196,240','queue','Queue']:['green','91,214,164','flag',s.type==='time_off'?'Time off':'Work'];
@@ -74,7 +74,7 @@ export function journey(container,{day,settings,filter,isToday,isPast,now=Date.n
   row.querySelector('.name').textContent=s.name;row.querySelector('.meta').textContent=done?text+' · done':live?'Ends '+stamp(s.end):text+' · ends '+stamp(s.end);
   row.querySelector('.chip').textContent=live?duration(s.end-now)+' left':duration(s.end-s.start);next.append(row);
  });
- if(events.length){const breaks=events.filter(s=>s.type==='break');next.append(make('div','total',filter==='special'?`${breaks.length} breaks · ${Math.round(breaks.reduce((n,s)=>n+s.end-s.start,0)/60000)} min total${isToday?' today':''}`:`${events.length} ${filter==='queues'?'queue changes':'activities'} · ${duration(events.reduce((n,s)=>n+s.end-s.start,0))} total`));}
- else next.append(make('div','empty-hint',filter==='queues'?'No queue changes on your schedule today.':'No events in this filter.'));
+ if(events.length){const breaks=events.filter(s=>s.type==='break');next.append(make('div','total',filter==='special'?`${breaks.length} breaks · ${Math.round(breaks.reduce((n,s)=>n+s.end-s.start,0)/60000)} min total${isToday?' today':''}`:`${events.length} ${filter==='queues'?'queue activities':'activities'} · ${duration(events.reduce((n,s)=>n+s.end-s.start,0))} total`));}
+ else next.append(make('div','empty-hint','No schedule detected.'));
  reconcile(timeline,next);
 }

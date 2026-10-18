@@ -18,6 +18,9 @@ export async function start(){
    if(path==='/harness.html'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><body style="margin:0;background:#f3f5f9;min-height:100vh"><h1 style="padding:24px;font:20px system-ui">Snooze interaction verification</h1></body></html>');return;}
    const file=resolve(root,'.'+path);if(!file.startsWith(root+sep))throw Error('Invalid path');
    let body=await readFile(file);
+   // Replace only the remote RPC reader. Cache/message/normalization handlers
+   // remain production code; explicit HTTP-error tests still use the reader.
+   if(path==='/extension/background.mjs')body=Buffer.from(body.toString().replace('const result=await getWeekSchedule(date);','const result=globalThis.__wfmStatus ? await getWeekSchedule(date) : await globalThis.__readWeekFixture(date);'));
    if(path==='/extension/popup.html')body=Buffer.from(body.toString().replace('<script type="module" src="popup.js"></script>','<script type="module">await import("./background.mjs");await import("./popup.js");</script>'));
    res.setHeader('Content-Type',({'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.png':'image/png'})[extname(file)]??'application/octet-stream');res.end(body);
   }catch{res.statusCode=404;res.end('Not found');}
@@ -33,16 +36,27 @@ export async function init(page,state=fixture()){
   const listeners=[],storageListeners=[],data={local:{wfm_companion_state_v1:state},session:{wfm_companion_ui_logs_v1:Array.from({length:45},()=>({code:'schedule_applied'}))}};
   const event=()=>({addListener(){}});
   window.__messages=[];window.__fetches=[];window.__storage=data;
+  window.__readWeekFixture=async date=>{
+   window.__fetches.push(date);
+   if(window.__scheduleDelayMs)await new Promise(resolve=>setTimeout(resolve,window.__scheduleDelayMs));
+   if(window.__scheduleError)return {ok:false,reason:window.__scheduleError};
+   const start=new Date(date+'T12:00:00Z');start.setUTCDate(start.getUTCDate()-(start.getUTCDay()+6)%7);
+   const source=state.week??window.__fixtureWeek;
+   if(!source)return {ok:true,weekStart:start.toISOString().slice(0,10),weekEnd:new Date(+start+6*86400000).toISOString().slice(0,10),days:[],warnings:[]};
+   return {...structuredClone(source),ok:true,weekStart:start.toISOString().slice(0,10),weekEnd:new Date(+start+6*86400000).toISOString().slice(0,10),days:source.days.map((day,i)=>{
+    const date=new Date(+start+i*86400000).toISOString().slice(0,10);return {...structuredClone(day),date,events:day.events.map(event=>({...event,startDate:date,endDate:date}))};
+   })};
+  };
   const area=name=>({
    async get(keys){if(typeof keys==='string')return {[keys]:data[name][keys]};if(Array.isArray(keys))return Object.fromEntries(keys.map(k=>[k,data[name][k]]));return structuredClone(data[name]);},
    async set(patch){const changes={};for(const [key,value] of Object.entries(patch)){changes[key]={oldValue:data[name][key],newValue:structuredClone(value)};data[name][key]=structuredClone(value);}queueMicrotask(()=>storageListeners.forEach(fn=>fn(changes,name)));},
    async remove(keys){for(const key of Array.isArray(keys)?keys:[keys])delete data[name][key];}
   });
-  window.chrome={runtime:{lastError:null,getURL:path=>location.origin+'/extension/'+path,getManifest:()=>({version:'0.4.19'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event(),onStartup:event(),sendMessage(message,callback){window.__messages.push(message);let answered=false;for(const fn of listeners){const handled=fn(message,{url:location.href},r=>{if(!answered){answered=true;callback?.(r);}});if(handled===true)break;} }},
+  window.chrome={runtime:{lastError:null,getURL:path=>location.origin+'/extension/'+path,getManifest:()=>({version:'0.4.23'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event(),onStartup:event(),sendMessage(message,callback){window.__messages.push(message);let answered=false;for(const fn of listeners){const handled=fn(message,{url:location.href},r=>{if(!answered){answered=true;callback?.(r);}});if(handled===true)break;} }},
    storage:{local:area('local'),session:area('session'),onChanged:{addListener:fn=>storageListeners.push(fn)}},
    alarms:{clear:async()=>{},create:async()=>{},onAlarm:event()},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},
    tabs:{query:async()=>[],sendMessage:async()=>{},create:async()=>({id:1}),update:async()=>{}},windows:{update:async()=>{}}};
   const original=Element.prototype.attachShadow;Element.prototype.attachShadow=function(options){const root=original.call(this,options);window.__closedShadow=root;return root;};
-  const realFetch=window.fetch;window.fetch=(url,options)=>{if(String(url).startsWith('http://svdt1ipccwfm09')){window.__fetches.push(String(url));return Promise.reject(new TypeError('WFM fixture offline'));}return realFetch(url,options);};
+  const realFetch=window.fetch;window.fetch=(url,options)=>{if(String(url).startsWith('http://svdt1ipccwfm09')){window.__fetches.push(String(url));if(window.__wfmStatus){const response=()=>new Response('',{status:window.__wfmStatus});return window.__wfmDelayMs?new Promise(resolve=>setTimeout(()=>resolve(response()),window.__wfmDelayMs)):Promise.resolve(response());}return Promise.reject(new TypeError('WFM fixture offline'));}return realFetch(url,options);};
  },{state});
 }
