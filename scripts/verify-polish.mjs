@@ -15,9 +15,8 @@ const freeze=async(page,selector,time)=>page.locator(selector).evaluate((node,ti
 try{
  const page=await open();await page.goto(env.base+'/extension/popup.html');await page.waitForSelector('.ev');
  await page.waitForFunction(()=>document.querySelector('.hd .btn').getAttribute('aria-busy')==='false');
- await check('Popup opening refreshes once, and gaps describe intervals without claiming free time',async()=>{
-  assert.equal(await page.evaluate(()=>window.__messages.filter(message=>message.type==='WFM_REFRESH').length),1);
-  assert.equal(await page.evaluate(()=>window.__messages.find(message=>message.type==='WFM_REFRESH').trigger),'popup');
+ await check('Popup opening reuses a current cache, and gaps describe intervals without claiming free time',async()=>{
+  assert.equal(await page.evaluate(()=>window.__messages.filter(message=>message.type==='WFM_REFRESH').length),0);
   const gaps=await page.locator('.gtext').allTextContents();assert.ok(gaps.some(text=>text.includes('until Lunch Break')));
   assert.ok(gaps.some(text=>text.includes('between activities')));assert.ok(gaps.every(text=>!text.includes('free')));
  });
@@ -59,10 +58,36 @@ try{
   assert.ok(cards.every(card=>card.x>=0&&card.right<=380));
   for(let i=1;i<cards.length;i++)assert.ok(cards[i].top-cards[i-1].bottom>=8);
  });
+ await check('Day, filter and Settings content stays in place through short dissolves; updates do not replay entrances',async()=>{
+  const quiet=await open();await quiet.goto(env.base+'/extension/popup.html');await quiet.waitForSelector('.ev');
+  const inspect=async selector=>quiet.locator(selector).evaluate(node=>{
+   const animation=node.getAnimations()[0];if(!animation)throw Error('Missing content transition');
+   animation.pause();const frames=[];
+   for(const time of [0,60,animation.effect.getTiming().duration]){animation.currentTime=time;const r=node.getBoundingClientRect();frames.push({x:r.x,y:r.y,width:r.width,height:r.height,transform:getComputedStyle(node).transform});}
+   return {frames,duration:animation.effect.getTiming().duration,keys:animation.effect.getKeyframes()};
+  });
+  assert.equal(await quiet.locator('.journey').evaluate(node=>node.getAnimations().length),0);
+  await quiet.evaluate(()=>document.querySelectorAll('.seg button')[2].click());
+  const filter=await inspect('.journey');assert.ok(filter.duration<=150);assert.deepEqual(filter.frames[0],filter.frames[1]);assert.deepEqual(filter.frames[1],filter.frames[2]);
+  assert.ok(filter.keys.every(frame=>!('transform' in frame)));assert.equal(await quiet.locator('.seg').evaluate(node=>node.getAnimations().length),0);
+  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-12"]').click());
+  const day=await inspect('.journey');assert.deepEqual(day.frames[0],day.frames[1]);assert.deepEqual(day.frames[1],day.frames[2]);
+  await quiet.screenshot({path:'verification/content-stays-in-place.png'});
+  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-17"]').click());
+  const off=await inspect('.dc');assert.deepEqual(off.frames[0],off.frames[1]);assert.deepEqual(off.frames[1],off.frames[2]);
+  await quiet.evaluate(()=>document.querySelector('[data-date="2026-10-12"]').click());
+  await quiet.evaluate(()=>document.querySelector('.ft button').click());
+  const settings=await inspect('.settings-body');assert.ok(settings.duration<=150);assert.deepEqual(settings.frames[0],settings.frames[1]);assert.deepEqual(settings.frames[1],settings.frames[2]);
+  await quiet.evaluate(()=>document.querySelector('#back').click());await quiet.waitForTimeout(180);
+  await quiet.evaluate(async()=>chrome.storage.local.set({wfm_companion_state_v1:{...window.__storage.local.wfm_companion_state_v1,lastUpdated:Date.now()}}));
+  assert.equal(await quiet.locator('.journey').evaluate(node=>node.getAnimations().length),0);
+  await quiet.clock.setFixedTime(new Date('2026-10-18T10:41:00Z'));await quiet.waitForTimeout(1100);
+  assert.equal(await quiet.locator('.journey').evaluate(node=>node.getAnimations().length),0);await quiet.close();
+ });
  await check('Reduced motion switches tabs and docks the ring immediately',async()=>{
   const reduced=await open({reducedMotion:'reduce'});await reduced.goto(env.base+'/extension/popup.html');await reduced.waitForSelector('.ev');
   await reduced.evaluate(()=>{document.querySelector('[data-date="2026-10-12"]').click();document.querySelectorAll('.seg button')[2].click();});
-  for(const selector of ['#thumb','#shared-countdown','.filter-underline'])assert.equal(await reduced.locator(selector).evaluate(node=>node.getAnimations().length),0);
+  for(const selector of ['#thumb','#shared-countdown','.filter-underline','.journey'])assert.equal(await reduced.locator(selector).evaluate(node=>node.getAnimations().length),0);
   await reduced.screenshot({path:'verification/reduced-motion.png'});await reduced.close();
   await page.evaluate(()=>document.querySelector('[data-date="2026-10-12"]').click());
   await page.emulateMedia({reducedMotion:'reduce'});await page.waitForTimeout(50);

@@ -2,11 +2,18 @@
 html,body{margin:0;padding:0;width:380px;height:600px;overflow:hidden}
 /* One schedule scrollbar: the header and picker move away with the events.
    Keep only the small footer available for Settings and Open WFM. */
-.schedule-view>.schedule-scroll{position:relative;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
+.schedule-view>.schedule-scroll{position:relative;display:flex;flex-direction:column;flex:1;min-height:0;overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:contain;scrollbar-gutter:stable}
 .schedule-scroll>.top,.schedule-scroll>.hero,.schedule-scroll>.seg{flex:none}
 .schedule-scroll>.tb{flex:none;overflow:visible;min-height:0}
+/* Fill the day-off space while keeping the landscape and sun uncropped. */
+.schedule-scroll>.dc svg{top:auto;bottom:0;height:auto;aspect-ratio:356 / 196}
 .schedule-view>.ft{flex:none}
 .schedule-scroll .shared-countdown{position:absolute!important}
+/* Reuse the original stale screen's amber treatment for cached days off too. */
+.schedule-refresh-warning{display:flex;align-items:center;gap:10px;margin:2px 12px 8px;padding:10px 12px;border-radius:12px;background:var(--wn);color:var(--wt);font-size:12px;font-weight:600;line-height:1.4}
+.schedule-refresh-warning span{flex:1;min-width:0}
+.schedule-refresh-warning button{flex:none;min-height:34px;padding:0 12px;border:0;border-radius:9px;background:var(--wt);color:var(--wn);font:inherit;cursor:pointer}
+.hd .s.w{color:var(--wt);font-weight:700}
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 button:disabled{opacity:.7;cursor:wait}
 .tb .empty-hint{padding:22px 16px;text-align:center;color:var(--mu);font-size:12px}
@@ -96,8 +103,7 @@ button:active:not(:disabled){filter:brightness(.96)}
 .popup-toast{transition:opacity .17s ease-out,transform .17s cubic-bezier(.2,.75,.2,1)}
 .popup-toast.success{background:var(--tx);color:var(--bg)}
 
-/* Non-current-day/filter geometry is animated by Web Animations (FLIP),
-   so this CSS does not alter the screenshot-matched design at rest. */
+/* Navigation dissolves briefly; content has no entrance translation. */
 @media(prefers-reduced-motion:reduce){.popup-toast{transition:none!important}}
 
 /* v0.4.7 — both rings are circular, without rectangular glow clipping. */

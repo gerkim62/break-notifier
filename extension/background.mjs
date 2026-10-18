@@ -3,6 +3,7 @@ import {normalizeWfmHolder,isoWeek} from './normalize.mjs';
 import {createWfmClient} from './transport.mjs';
 import {createDiagnosticRun,diagnosticSummary,diagnosticExport,diagnosticLimit} from './diagnostics.mjs';
 import {DEFAULT_SETTINGS,settingsWithDefaults,localDate,wallTimeToEpoch,weekFingerprint,changedRemainingToday,changeDescription,selectedAlert} from './companion-core.mjs';
+import {scheduleFreshness,scheduleRefreshDue} from './schedule-freshness.mjs';
 import {compareDomToCached,observationId} from './wfm-dom-compare.mjs';
 
 const client=createWfmClient();
@@ -102,14 +103,22 @@ async function updateBadge(){
 export async function refresh({trigger='manual',date:requestedDate}={}){
  if(requestedDate!==undefined){try{isoWeek(requestedDate);}catch{return {ok:false,reason:'invalid_date'};}}
  const initial=await getState(),requested=requestedDate??localDate(Date.now(),initial.settings.timeZone),key=isoWeek(requested)[0];
- if(weekRequests.has(key))return weekRequests.get(key);
+ if(trigger==='popup'&&!scheduleRefreshDue(initial,requested))return {ok:true,cached:true};
+ if(weekRequests.has(key)){
+  const result=await weekRequests.get(key);
+  return result.cached&&trigger!=='popup'?refresh({trigger,date:requestedDate}):result;
+ }
  const previous=fetchInProgress;
  const request=(async()=>{
   if(previous)await previous.catch(()=>{});
   const state=await getState();const now=Date.now(),currentDate=localDate(now,state.settings.timeZone),date=requestedDate??currentDate;
+  if(trigger==='popup'&&!scheduleRefreshDue(state,date,now))return {ok:true,cached:true};
+  const policy=scheduleFreshness(state,date,now);
   const result=await getWeekSchedule(date);
   if(!result.ok){
-   await patchState({lastError:{reason:result.reason,message:result.message??null,at:now}});
+   const error={reason:result.reason,message:result.message??null,at:Date.now()};
+   const refreshFailures=Object.fromEntries(Object.entries({...state.refreshFailures,[policy.key]:error}).sort((a,b)=>b[1].at-a[1].at).slice(0,48));
+   await patchState({lastError:error,refreshFailures});
    await logUI('refresh_failed',{reason:result.reason,trigger});await broadcast();return {ok:false,reason:result.reason,message:result.message};
   }
   const week=userFacingWeek(result);
@@ -120,9 +129,11 @@ export async function refresh({trigger='manual',date:requestedDate}={}){
   if(!starts.includes(week.weekStart))starts[starts.length-1]=week.weekStart;
   if(cached[currentStart]&&!starts.includes(currentStart))starts[starts.length-1]=currentStart;
   const weeks=Object.fromEntries(starts.map(start=>[start,cached[start]]));
-  const weekUpdated=Object.fromEntries(starts.map(start=>[start,start===week.weekStart?now:state.weekUpdated?.[start]??(state.week?.weekStart===start?state.lastUpdated:null)]));
+  const checkedAt=Date.now();
+  const weekUpdated=Object.fromEntries(starts.map(start=>[start,start===week.weekStart?checkedAt:state.weekUpdated?.[start]??(state.week?.weekStart===start?state.lastUpdated:null)]));
+  const refreshFailures=Object.fromEntries(Object.entries(state.refreshFailures??{}).filter(([failure])=>!failure.startsWith(week.weekStart+':')));
   if(week.weekStart!==currentStart){
-   await patchState({weeks,weekUpdated,lastError:null});
+   await patchState({weeks,weekUpdated,refreshFailures,lastError:null});
    await logUI('schedule_applied',{trigger,dayCount:week.days.length,eventCount:week.days.reduce((n,d)=>n+d.events.length,0),changedToday:0});
    await broadcast();return {ok:true,changedToday:false};
   }
@@ -130,7 +141,7 @@ export async function refresh({trigger='manual',date:requestedDate}={}){
   const changed=Boolean(old)&&weekFingerprint(week)!==weekFingerprint(old);
   const changedToday=changed&&changedRemainingToday(old,week,state.settings,now);
   const toast=changedToday?{text:changeDescription(old,week,state.settings,now),expiresAt:now+5000}:null;
-  const next={week,weeks,weekUpdated,lastUpdated:now,lastError:null,domChange:null,bannerHiddenFingerprint:null,toast,pending:null,pendingAt:null};
+  const next={week,weeks,weekUpdated,refreshFailures,lastUpdated:checkedAt,lastError:null,domChange:null,bannerHiddenFingerprint:null,toast,pending:null,pendingAt:null};
   if(old?.weekStart!==week.weekStart){next.snoozes={};next.dismissed={};}
   await patchState(next);
   await logUI('schedule_applied',{trigger,dayCount:week.days.length,eventCount:week.days.reduce((n,d)=>n+d.events.length,0),changedToday:Number(changedToday)});

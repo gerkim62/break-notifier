@@ -2,8 +2,9 @@ import {SCREENS} from './design-screens.mjs';
 import {weekPicker,journey} from './schedule-components.mjs';
 import {icon,countdownRing,paintRing} from './ui-icons.mjs';
 import {PausableToastTimer} from './queue-toast.mjs';
-import {captureMotion,restoreMotion,reveal,animate as animateMotion,motionTiming,reducedMotion} from './motion.mjs';
+import {captureMotion,restoreMotion,fadeContent} from './motion.mjs';
 import {settingsWithDefaults,localDate,localTime,buildDaySegments,contextForDay,formatDuration,dayForDate,eventBounds,wallTimeToEpoch,segmentProgress,alertColor} from './companion-core.mjs';
+import {scheduleFreshness,scheduleRefreshDue,scheduleRefreshFailure} from './schedule-freshness.mjs';
 
 const $=(selector,root=document)=>root.querySelector(selector);
 const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
@@ -15,7 +16,7 @@ let state=null,selectedDate=null,filter='special',mode='schedule',loginBusy=fals
 let lastInfoOpen=false;
 let retainedPicker=null;
 let retainedFilters=null;
-const weekLoads=new Map(),visitedWeeks=new Set(),weekErrors=new Map();
+const weekLoads=new Map(),visitedChecks=new Set(),weekErrors=new Map();
 let savedScheduleScroll=0;
 let popupToastClock=null,toastActionBusy=false,toastVersion=0;
 const settings=()=>settingsWithDefaults(state?.settings);
@@ -36,9 +37,7 @@ function determineVariant(){
  const day=dayForDate(w,selectedDate??today());
  if(day?.kind==='day_off')return 'off';
  if(state?.lastError?.reason==='not_authenticated')return 'signed-cache';
- // The reference marks the saved schedule stale when the previous refresh predates 6 AM today.
- const last=state?.lastUpdated;if(last){const freshDate=localDate(last,settings().timeZone);const current=today();const early=wallTimeToEpoch(current,'06:00',settings().timeZone);
-  if(freshDate!==current || (early!==null && Date.now()>=early && last<early))return 'stale';}
+ if(scheduleFreshness(state,selectedDate??today()).status==='stale'&&!weekLoads.has(w.weekStart))return 'stale';
  return 'today';
 }
 function header(variant){
@@ -47,19 +46,19 @@ function header(variant){
  const signout=!week()&&state?.lastError?.reason==='not_authenticated';
  let label='Not refreshed yet';
  if(signout)label='Signed out';
- else if(updated){const d=localDate(updated,settings().timeZone);label=(d===today()?'Updated ':'Updated yesterday, ')+stamp(updated);}
- if(variant==='stale'&&updated)label=`Updated ${localDate(updated,settings().timeZone)===today()?'today':'yesterday'}, ${stamp(updated)}`;
+ else if(updated)label='Updated '+stamp(updated,localDate(updated,settings().timeZone)===today()?{}:{month:'short',day:'numeric'});
  updateFirstText(badge,label+' ');
  if(badge){const textNode=[...badge.childNodes].find(node=>node.nodeType===Node.TEXT_NODE);if(textNode)textNode.replaceWith(h('span','update-label',label));}
  const refresh=$('.hd .btn',app);
  if(refresh){
-  const loading=weekLoads.has(weekStart(selectedDate??today()));
-  refresh.disabled=loading;refresh.classList.toggle('hot',variant==='stale'&&!loading);
+  const loading=weekLoads.has(weekStart(selectedDate??today()))||loginBusy;
+  const unconfirmed=scheduleFreshness(state,selectedDate??today()).status==='stale';
+  refresh.disabled=loading;refresh.classList.toggle('hot',unconfirmed&&!loading);badge?.classList.toggle('w',unconfirmed&&!loading);
   refresh.setAttribute('aria-label',loading?'Refreshing schedule':'Refresh schedule');
   refresh.setAttribute('aria-busy',String(loading));refresh.onclick=refreshSchedule;
   const icon=refresh.querySelector('svg');if(icon)icon.classList.toggle('spinning',loading);
   // Only rewrite the text node, never remove the design's SVG.
-  updateFirstText(refresh,loading?'Refreshing…':'Refresh');
+  updateFirstText(refresh,loading?'Checking…':'Refresh');
  }
  // Retain the exact visual icon, but make it a real accessible trigger.
  const original=$('.hd .s svg',app);
@@ -70,6 +69,8 @@ function header(variant){
   const popup=h('div','schedule-info-popover');popup.id='schedule-info-popover';popup.hidden=!lastInfoOpen;
   popup.setAttribute('role','status');popup.append(h('strong','','Schedule details'));
   popup.append(h('div','',updated?`Last updated: ${stamp(updated,{month:'short',day:'numeric'})}`:'Not refreshed yet'));
+  const freshness=scheduleFreshness(state,selectedDate??today());
+  popup.append(h('div','',freshness.status==='confirmed'?'Confirmed for this shift.':freshness.status==='stale'?'Saved schedule has not been confirmed.':freshness.status==='provisional'?(freshness.bounds?'Future schedule is provisional.':'No shift has been confirmed for this day.'):freshness.status==='archived'?'Saved schedule for a completed day.':freshness.status==='day-off'?'Day off checked today.':'Schedule has not been loaded.'));
   if(state?.lastError?.reason)popup.append(h('div','',`Last refresh: ${errorMessage(state.lastError)}`));
   const warnings=week()?.warnings?.length??0;
   if(warnings)popup.append(h('div','',`${warnings} WFM data warning${warnings===1?'':'s'}. See Diagnostics.`));
@@ -78,51 +79,32 @@ function header(variant){
   button.onclick=e=>{e.stopPropagation();lastInfoOpen=!lastInfoOpen;button.setAttribute('aria-expanded',String(lastInfoOpen));popup.hidden=!lastInfoOpen;};
  }
 }
+function freshnessNotice(){
+ const date=selectedDate??today(),freshness=scheduleFreshness(state,date);
+ if(freshness.status!=='stale'||weekLoads.has(freshness.weekStart))return;
+ const failure=scheduleRefreshFailure(state,date),notice=h('div','warn schedule-refresh-warning');notice.setAttribute('role','status');
+ const message=failure?(freshness.bounds?'Couldn’t confirm this shift. Showing saved schedule.':'Couldn’t confirm this day. Showing saved schedule.'):'Schedule needs checking. Showing saved schedule.';
+ notice.append(h('span','',message));
+ if(failure?.reason==='not_authenticated'){
+  const button=h('button','',loginBusy?'Checking…':'Log in');button.type='button';button.disabled=loginBusy;button.setAttribute('aria-busy',String(loginBusy));button.onclick=loginSchedule;notice.append(button);
+ }
+ const top=$('.top',app);top?.insertBefore(notice,$('.week-picker',top));
+}
 
 
-// Animate the *existing* schedule content to its new position after a day or
-// filter change. The countdown ring is independent and keeps its own dock/return
-// transition. Never animate initial load, async state updates, or ticking clocks.
-// Only explicit screen-navigation clicks animate. Avoid animating async renders.
+// Content replacement stays at its final position. Only explicit navigation
+// dissolves briefly; initial loads, async updates and clock ticks stay still.
 function changePopupMode(nextMode){
  if(mode===nextMode)return;
  if(mode==='schedule')savedScheduleScroll=$('.schedule-scroll',app)?.scrollTop??0;
  mode=nextMode;render();
- const panel=mode==='settings'?$('.settings-body',app):$('.week-picker',app);
- const content=mode==='settings'?null:$('.hero',app)??$('.dc',app)??$('.seg',app);
- for(const element of [panel,content])reveal(element);
+ fadeContent(mode==='settings'?$('.settings-body',app):$('.schedule-scroll',app),{duration:150});
 }
 function changeScheduleView(change,kind='day'){
- const oldSeg=$('.seg',app),oldTable=$('.tb',app),oldHero=$('.hero',app);
- const oldSegY=oldSeg?.getBoundingClientRect().top;
- const oldTableY=oldTable?.getBoundingClientRect().top;
- const wasHero=Boolean(oldHero);
  change();
  render();
- if(reducedMotion())return;
- const {duration,easing}=motionTiming;
- const animate=(selector,previousTop)=>{
-  const element=$(selector,app);
-  if(!element)return;
-  const moved=Number.isFinite(previousTop)?previousTop-element.getBoundingClientRect().top:0;
-  const offset=kind==='day'&&Math.abs(moved)>1?moved:6;
-  animateMotion(element,[
-   {transform:`translateY(${offset}px)`,opacity:kind==='day'&&Math.abs(moved)>1?0.9:0.72},
-   {transform:'translateY(0)',opacity:1}
-  ],{duration,easing});
- };
- if(kind==='day')animate('.seg',oldSegY);
- animate('.tb',oldTableY);
- const offDay=$('.dc',app);
- if(offDay)animateMotion(offDay,[
-  {opacity:0,transform:'translateY(7px)'},
-  {opacity:1,transform:'translateY(0)'}
- ],{duration,easing});
- const hero=$('.hero',app);
- if(hero&&!wasHero)animateMotion(hero,[
-  {opacity:0,transform:'translateY(-7px)'},
-  {opacity:1,transform:'translateY(0)'}
- ],{duration,easing});
+ fadeContent($('.tb',app)??$('.dc',app));
+ if(kind==='day')fadeContent($('.hero',app));
 }
 
 function tabs(){
@@ -246,7 +228,7 @@ function installScreen(variant){
  for(const child of [...popup.children])if(child!==foot)scroller.append(child);
  popup.prepend(scroller);activeDate=selectedDate??today();
  const seg=$('.seg',app);if(seg&&retainedFilters){seg.replaceWith(retainedFilters);}
- header(variant);tabs();footer();
+ header(variant);tabs();footer();freshnessNotice();
  const day=dayForDate(selectedWeek(),selectedDate??today());
  if(variant!=='off'){
   // The countdown card belongs exclusively to Today. Other days show their
@@ -379,17 +361,17 @@ async function loginSchedule(){
   await loadState();
   if(!result?.ok)showRequestError(result);
   else if(result.action==='reused'||result.action==='created')showToast('WFM opened for sign-in.','success');
-  else if(result.action==='schedule_loaded'){showToast('Schedule loaded.','success');loadSelected=!selectedWeek();}
+  else if(result.action==='schedule_loaded'){showToast('Schedule loaded.','success');loadSelected=scheduleFreshness(state,selectedDate??today()).needsCheck;}
  }catch{showToast('Extension background service unavailable.');}
- finally{loginBusy=false;if(loadSelected)await loadWeek(selectedDate??today());else render();}
+ finally{loginBusy=false;if(loadSelected)await loadWeek(selectedDate??today(),{manual:true});else render();}
 }
 function ensureWeekLoaded(date){
- const start=weekStart(date);if(visitedWeeks.has(start))return;
+ const policy=scheduleFreshness(state,date);if(visitedChecks.has(policy.key)||!scheduleRefreshDue(state,date))return;
  return loadWeek(date);
 }
 async function loadWeek(date,{manual=false}={}){
  const start=weekStart(date);if(weekLoads.has(start)||loginBusy)return;
- visitedWeeks.add(start);weekErrors.delete(start);
+ visitedChecks.add(scheduleFreshness(state,date).key);weekErrors.delete(start);
  const request=send({type:'WFM_REFRESH',date,trigger:manual?'manual':'popup'});
  weekLoads.set(start,request);render();
  try{
@@ -467,6 +449,8 @@ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&lastInfoOpe
 chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.wfm_companion_state_v1){state=changes.wfm_companion_state_v1.newValue;if(mode==='schedule')render();}});
 (async()=>{try{await loadState();ensureWeekLoaded(selectedDate??today());}catch{state={lastError:{reason:'extension_error',message:'Background worker unavailable'},settings:settingsWithDefaults()};render();}
  setInterval(()=>{if(mode==='schedule'){
+  if(determineVariant()!==activeVariant)render();
+  ensureWeekLoaded(selectedDate??today());
   if(week()&&activeVariant!=='off'&&selectedDate===today())hero(dayForDate(week(),selectedDate));
   if(activeVariant!=='off'&&activeVariant!=='signed-empty')rows(dayForDate(selectedWeek(),selectedDate??today()));
   syncLiveRing();

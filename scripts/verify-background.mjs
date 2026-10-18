@@ -4,7 +4,7 @@ import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 import {fixture,NOW} from './browser-harness.mjs';
 const report={checks:[]},listeners=[],data={local:{wfm_companion_state_v1:fixture()},session:{}},requests=[];
-const originalNow=Date.now;Date.now=()=>Date.parse(NOW);
+const originalNow=Date.now;let clock=Date.parse(NOW);Date.now=()=>clock;
 const event={addListener(){}};
 const area=name=>({get:async key=>Array.isArray(key)?Object.fromEntries(key.map(k=>[k,data[name][k]])):{[key]:data[name][key]},set:async patch=>Object.assign(data[name],structuredClone(patch)),remove:async keys=>{for(const k of keys)delete data[name][k];}});
 globalThis.chrome={storage:{local:area('local'),session:area('session')},runtime:{getManifest:()=>({version:'0.4.18'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event,onStartup:event},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},alarms:{clear:async()=>{},create:async()=>{},onAlarm:event},tabs:{query:async()=>[],sendMessage:async()=>{}}};
@@ -20,6 +20,8 @@ try{
  data.local.wfm_companion_state_v1.snoozes={keep:Date.now()+60000};
  const initial=structuredClone(data.local.wfm_companion_state_v1);
  const module=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ const cached=await module.refresh({trigger:'popup',date:'2026-10-18'});assert.equal(cached.cached,true);assert.equal(requests.length,0);
+ report.checks.push('Background rejects redundant automatic reads for a current cache');
  await module.refresh({date:'2026-10-25'});
  let current=data.local.wfm_companion_state_v1;
  assert.deepEqual(current.week,initial.week);assert.equal(current.lastUpdated,initial.lastUpdated);
@@ -36,6 +38,13 @@ try{
  await Promise.all([module.refresh({trigger:'popup',date:'2026-10-25'}),module.refresh({date:'2026-10-19'}),module.refresh({date:'2026-10-21'})]);
  assert.equal(requests.length,before+1);
  report.checks.push('Concurrent requests for the same week share a single RPC read');
+ clock=Date.parse('2026-10-18T14:00:00Z');const checkpointReads=requests.length;
+ await module.refresh({trigger:'popup',date:'2026-10-18'});await module.refresh({trigger:'popup',date:'2026-10-18'});
+ assert.equal(requests.length,checkpointReads);
+ clock=Date.parse('2026-10-18T20:00:00Z');
+ await module.refresh({trigger:'popup',date:'2026-10-19'});await module.refresh({trigger:'popup',date:'2026-10-19'});
+ assert.equal(requests.length,checkpointReads+1);
+ report.checks.push('Confirmed shifts ignore fixed clock times; the next shift gets one check in its own window');
  for(const check of report.checks)console.log('PASS '+check);
 }catch(e){report.failure=e.stack;console.error(e);process.exitCode=1;}
 finally{Date.now=originalNow;await writeFile('verification/background-report.json',JSON.stringify(report,null,2));}

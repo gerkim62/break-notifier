@@ -1,8 +1,12 @@
-# WFM Schedule Companion v0.4.23
+# WFM Schedule Companion v0.4.27
 
-Filter tabs now use an animated underline with arrow-key, Home and End navigation. Activity cards have 8 px of separation. Gap labels describe time between activities rather than claiming free time, and empty filters say **No schedule detected.** The picker, underline and countdown ring share interruptible motion; repeated selections continue from the currently displayed position. Content changes use restrained fades and movement. Reduced motion applies at load and when the system preference changes.
+Shifts are confirmed by a successful check **within the 12 hours before their native start time**, or by a check during an already-started shift. That confirmation remains valid through shift end, including overnight shifts; cache age alone does not make a confirmed shift stale. Future shifts outside the window remain provisional and use cached data. A new start time returned by WFM determines a new confirmation window. Past days do not auto-refresh. Missing weeks load immediately; days off and unknown days get a daily check when opened. The schedule timezone defaults to Africa/Nairobi.
 
-Opening the popup refreshes the current week while showing cached data immediately. The first visit to each other week loads it automatically, with loading, retry and login states. Each week loads once per popup session unless Refresh is clicked. Concurrent requests for the same week share one RPC read; other weeks are serialized so responses cannot overwrite each other's cache. Late responses preserve the selected date, and loading another week preserves today's alert data. Browser startup, badge alarms and passive page observations do not fetch WFM. This replaces the earlier manual-only popup/week loading policy.
+Opening an unconfirmed shift inside its window triggers one check. An open popup also notices when the window begins. The header reads **Checking…** while it runs. A failed confirmation preserves saved data and uses the existing amber stale-screen timestamp and highlighted header Refresh button, plus a persistent **Couldn’t confirm this shift. Showing saved schedule.** warning. The header contains the only Refresh action; the warning adds Log in only when authentication is required. Days off use corresponding day-confirmation wording. A failure never advances the successful-check timestamp or marks a shift confirmed, and it is not automatically repeated for the same shift/window. **Refresh** always retries; a successful check clears the warning. Browser startup, badge alarms and passive page observations do not fetch WFM.
+
+Filter tabs now use an animated underline with arrow-key, Home and End navigation. Activity cards have 8 px of separation. Gap labels describe time between activities rather than claiming free time, and empty filters say **No schedule detected.** The picker, underline and countdown ring share interruptible motion; repeated selections continue from the currently displayed position. Lists, cards, filter bars and Settings no longer translate vertically on entry. Content replacement uses a short 120 ms opacity transition, or 150 ms for Settings, while staying at its final position. Initial loads, clock ticks and storage updates do not replay an entrance effect. Reduced motion applies at load and when the system preference changes.
+
+Opening the popup shows cached data immediately and refreshes it only when due. Other weeks follow the same policy, with loading, retry and login states for missing data. Concurrent requests for the same week share one RPC read; other weeks are serialized so responses cannot overwrite each other's cache. Late responses preserve the selected date, and loading another week preserves today's alert data. Browser startup, badge alarms and passive page observations do not fetch WFM.
 
 This release restores the original v0.4.17 popup as the base. The day selector and events list use the supplied HTML references, with week navigation added. Settings follows the supplied compact HTML layout with three reminder presets (2, 5 and 10 minutes); the manual minutes input is omitted. The original 380×600 layout, schedule header, movable countdown ring, filter controls, footer, light/dark themes, and existing empty/day-off screens are preserved. Component styles are scoped in `schedule-components.css` rather than applied globally. The journey follows the real clock and retains card/rail nodes between ticks.
 
@@ -14,9 +18,9 @@ Session-expired notifications include a **Log in** button that runs the existing
 
 Snooze now settles the island's initial width before pointer interaction. Enter/Space reliably opens the menu, arrow keys select enabled durations, and Escape closes it. Choosing a duration persists the snooze, hides the edge/island and shows confirmation. The alert returns after expiry.
 
-Previous/next week buttons, Today, arrow keys and swipes update the selected day. Cached weeks appear immediately as the first-visit load runs. Refresh retries or updates the selected week and retains today's alert schedule. Up to 12 weeks are saved.
+Previous/next week buttons, Today, arrow keys and swipes update the selected day. Cached weeks appear immediately, and due or missing weeks load on opening. Refresh retries or updates the selected week and retains today's alert schedule. Up to 12 weeks are saved.
 
-Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.23 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
+Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.27 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
 
 Verification is in the workspace's `verification/` folder. Real Chrome renders the production popup/content scripts using fixture schedules and browser APIs. A footer comparison checks its appearance against the original ZIP's popup. Long-schedule checks verify whole-page scrolling, access to the final activity, countdown alignment, and preserved scroll position. Other checks cover the day picker, journey, movable ring, week navigation/cache, HTML settings presets/switches and diagnostics, themes, and mouse/keyboard snooze. Authenticated WFM network access was not available in this environment.
 
@@ -66,7 +70,7 @@ Build based on v0.4.3 with the user's **WFM Schedule Companion UI Design v2**. T
 2. In `edge://extensions` or `chrome://extensions`, enable Developer mode and choose **Load unpacked**.
 3. Select the extracted folder containing `manifest.json`.
 4. **Remove or disable the previous 0.4.3 extension**, to avoid duplicate content-script banners/toasts.
-5. Open the popup to load the current week. Other weeks load on their first visit. Use Refresh to retry and Login if your WFM session has expired.
+5. Open the popup to see the current week; missing or due weeks load automatically. Use Refresh to retry and Login if your WFM session has expired.
 
 No WFM credentials or private user schedules are included in this package or screenshots.
 

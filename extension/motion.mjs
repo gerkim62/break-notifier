@@ -20,6 +20,8 @@ export function restoreMotion(snapshot){
   if(from!=='none')animate(node,[{transform:from},{transform:node.style.transform}]);
  }
 }
-export function reveal(node,{offset=6,duration=240}={}){
- animate(node,[{opacity:0,transform:`translateY(${offset}px)`},{opacity:1,transform:'translateY(0)'}],{...motionTiming,duration});
+// Replacing content has no spatial direction. Keep the layout still and use
+// only a short dissolve; selection and countdown motion retain real targets.
+export function fadeContent(node,{duration=120}={}){
+ animate(node,[{opacity:.65},{opacity:1}],{duration,easing:'ease-out'});
 }

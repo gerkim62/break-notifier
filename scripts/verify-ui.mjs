@@ -90,7 +90,7 @@ try{
   assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-19');await page.keyboard.press('ArrowLeft');
   assert.equal(await page.locator('.day:focus').getAttribute('data-date'),'2026-10-18');
   await page.click('#next');await page.screenshot({path:'verification/week-navigation.png',animations:'disabled'});await page.click('#today');
-  assert.equal(await page.evaluate(()=>window.__messages.filter(m=>m.type==='WFM_REFRESH'&&m.date==='2026-10-18').length),1);
+  assert.equal(await page.evaluate(()=>window.__messages.filter(m=>m.type==='WFM_REFRESH'&&m.date==='2026-10-18').length),0);
   await page.evaluate(()=>window.__scheduleDelayMs=0);
  });
  await check('Week navigation crosses year boundaries',async()=>{

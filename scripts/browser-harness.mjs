@@ -41,7 +41,7 @@ export async function init(page,state=fixture()){
    if(window.__scheduleDelayMs)await new Promise(resolve=>setTimeout(resolve,window.__scheduleDelayMs));
    if(window.__scheduleError)return {ok:false,reason:window.__scheduleError};
    const start=new Date(date+'T12:00:00Z');start.setUTCDate(start.getUTCDate()-(start.getUTCDay()+6)%7);
-   const source=state.week??window.__fixtureWeek;
+   const source=window.__fixtureWeek??state.week;
    if(!source)return {ok:true,weekStart:start.toISOString().slice(0,10),weekEnd:new Date(+start+6*86400000).toISOString().slice(0,10),days:[],warnings:[]};
    return {...structuredClone(source),ok:true,weekStart:start.toISOString().slice(0,10),weekEnd:new Date(+start+6*86400000).toISOString().slice(0,10),days:source.days.map((day,i)=>{
     const date=new Date(+start+i*86400000).toISOString().slice(0,10);return {...structuredClone(day),date,events:day.events.map(event=>({...event,startDate:date,endDate:date}))};
@@ -52,7 +52,7 @@ export async function init(page,state=fixture()){
    async set(patch){const changes={};for(const [key,value] of Object.entries(patch)){changes[key]={oldValue:data[name][key],newValue:structuredClone(value)};data[name][key]=structuredClone(value);}queueMicrotask(()=>storageListeners.forEach(fn=>fn(changes,name)));},
    async remove(keys){for(const key of Array.isArray(keys)?keys:[keys])delete data[name][key];}
   });
-  window.chrome={runtime:{lastError:null,getURL:path=>location.origin+'/extension/'+path,getManifest:()=>({version:'0.4.23'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event(),onStartup:event(),sendMessage(message,callback){window.__messages.push(message);let answered=false;for(const fn of listeners){const handled=fn(message,{url:location.href},r=>{if(!answered){answered=true;callback?.(r);}});if(handled===true)break;} }},
+  window.chrome={runtime:{lastError:null,getURL:path=>location.origin+'/extension/'+path,getManifest:()=>({version:'0.4.27'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event(),onStartup:event(),sendMessage(message,callback){window.__messages.push(message);let answered=false;for(const fn of listeners){const handled=fn(message,{url:location.href},r=>{if(!answered){answered=true;callback?.(r);}});if(handled===true)break;} }},
    storage:{local:area('local'),session:area('session'),onChanged:{addListener:fn=>storageListeners.push(fn)}},
    alarms:{clear:async()=>{},create:async()=>{},onAlarm:event()},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},
    tabs:{query:async()=>[],sendMessage:async()=>{},create:async()=>({id:1}),update:async()=>{}},windows:{update:async()=>{}}};

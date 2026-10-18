@@ -2,15 +2,19 @@
 
 The updated extension is in [`extension/`](extension/), rebuilt on the supplied v0.4.17 popup. The day selector and events list use the supplied designs, with week navigation added. Settings uses the supplied HTML layout with 2/5/10-minute presets and no manual minutes field. The schedule uses one scrollbar: its header, picker, countdown and filters scroll away with the events; the small action footer stays available. The popup remains 380×600, with the existing themes and snooze repair. Your scroll position survives data updates and a trip to Settings. The original ZIP and both HTML design references remain available locally.
 
-v0.4.23 replaces the filled filter pills with keyboard-accessible underline tabs and adds breathing room between activity cards. Gaps say “between activities” or count down to the next activity; they do not imply free time. Empty filters say “No schedule detected.” The popup refreshes the current week on opening and loads each newly visited week once per popup session. Cached data appears immediately; missing data shows loading, retry or login feedback. Concurrent requests for one week share one RPC read. Background startup and badge alarms still do not fetch schedules.
+The filter pills have been replaced with keyboard-accessible underline tabs, with breathing room between activity cards. Gaps say “between activities” or count down to the next activity; they do not imply free time. Empty filters say “No schedule detected.” Cached data appears immediately; missing data shows loading, retry or login feedback. Concurrent requests for one week share one RPC read.
 
-The day thumb, underline and movable ring retain their displayed positions through interrupted navigation and share a smooth deceleration. Content transitions and Settings use restrained movement and fades. System reduced motion applies immediately, including when the preference changes during an animation.
+v0.4.27 confirms shifts with one successful check **within the 12 hours before their start**, or on opening an unconfirmed shift already in progress. The confirmed schedule stays current until shift end, including overnight shifts. Future shifts outside their window remain provisional and use the cache. Missing weeks load immediately; days off and unknown days get one daily check on opening. Manual Refresh always retries. Checks run on opening a day or when an already-open popup enters its confirmation window; browser startup and badge alarms do not fetch schedules.
+
+The existing amber timestamp and highlighted header Refresh button show an unconfirmed saved schedule. While checking, the popup shows **Checking…**. A failed check keeps a persistent amber message, **Couldn’t confirm this shift. Showing saved schedule.** Refresh appears only in the header; the warning adds a Log in action when authentication is required. Failure does not mark data confirmed or advance its successful-check timestamp. Failed automatic checks are not repeated on each open for the same shift; manual retry remains available.
+
+The day thumb, underline and movable ring retain their displayed positions through interrupted navigation and share a smooth deceleration. Lists, filters and cards have no vertical entrance or travel animation. Explicit content changes use a brief 120 ms opacity transition; Settings uses 150 ms. Clock ticks, cached loads and storage updates do not replay entrance effects. System reduced motion applies immediately, including when the preference changes during an animation.
 
 The header and countdown rings share one SVG design and show the same live progress, with uniform strokes and no blurred glow. The countdown still moves into the header when you select another day.
 
 The session-expired toast includes a **Log in** action. Toasts pause dismissal while hovered, keyboard-focused, or checking login, then resume their remaining lifetime. They appear above the action footer.
 
-- Install: extract `wfm-schedule-companion-v0.4.23-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
+- Install: extract `wfm-schedule-companion-v0.4.27-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
 - Screenshots and pixel comparisons: [`verification/index.html`](verification/index.html).
 - Source: [`extension/popup.js`](extension/popup.js), [`extension/schedule-components.mjs`](extension/schedule-components.mjs), [`extension/schedule-components.css`](extension/schedule-components.css), [`extension/ring.js`](extension/ring.js), [`extension/background.mjs`](extension/background.mjs).
 
