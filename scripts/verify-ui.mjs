@@ -128,9 +128,9 @@ try{
   assert.equal(await page.evaluate(()=>window.__messages.findLast(m=>m.type==='WFM_REFRESH'&&m.trigger==='manual').date),'2026-10-25');
   await page.waitForFunction(()=>document.querySelector('.hd .btn')?.textContent.includes('Refresh')&&!document.querySelector('.hd .btn').disabled);await page.click('#today');assert.equal(await page.locator('.ev').count(),3);
  });
- await check('Original light theme is preserved outside the changed components',async()=>{
+ await check('Light mode renders a light schedule surface',async()=>{
   const light=await env.browser.newPage({viewport:{width:380,height:600},colorScheme:'light'});await init(light);await light.goto(env.base+'/extension/popup.html');await light.waitForSelector('.ev');
-  assert.equal(await light.locator('body').evaluate(e=>getComputedStyle(e).getPropertyValue('--bg').trim()),'#F3F5F9');await light.screenshot({path:'verification/popup-light.png'});await light.close();
+  assert.equal(await light.locator('.pop').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(243, 245, 249)');await light.screenshot({path:'verification/popup-light.png'});await light.close();
  });
  await check('Long schedules scroll the header away, keep the ring aligned, and preserve reading position',async()=>{
   const state=fixture(),day=state.week.days[3],date=day.date;

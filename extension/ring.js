@@ -1,7 +1,7 @@
 // All-page, isolated shadow-root alert ring. No page JS access or injected eval.
 (async()=>{
- let core;
- try{core=await import(chrome.runtime.getURL('companion-core.mjs'));}catch(error){
+ let core,theme;
+ try{[core,theme]=await Promise.all([import(chrome.runtime.getURL('companion-core.mjs')),import(chrome.runtime.getURL('theme.mjs'))]);}catch(error){
   chrome.runtime.sendMessage({type:'WFM_UI_DIAGNOSTIC',code:'overlay_error',reason:'module_import_failed'});return;
  }
  let queueToastLogic;
@@ -11,6 +11,7 @@
  if(!document.documentElement)return;
  const host=document.createElement('div');host.id='wfm-companion-edge-alert';
  host.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483646;';
+ const setOverlayTheme=theme.bindTheme(host);
  const shadow=host.attachShadow({mode:'closed'});
  shadow.innerHTML=`<style>:host{--bg:#F3F5F9;--sf:#fff;--ln:#E3E8F0;--tx:#0F1B2E;--mu:#5B6679;--ac:#2F5BEA;--as:#E8EEFE;--on:#fff;--qb:#E8EEFE;--qt:#1D3FAE;--bb:#FFEFC0;--bt:#7A4A00;--eb:#F1E6FF;--et:#5B21B6;--wn:#FFF3CF;--wt:#6B4200;--sky:#FFF0D2;--sun:#FBBF5C;--h1:#BFE6D6;--h2:#7FD0B2;--h3:#4FB394}
 @media (prefers-color-scheme:dark){:host{--bg:#0D121C;--sf:#151C2A;--ln:#263044;--tx:#E8EDF6;--mu:#9AA7BD;--ac:#8AA5FF;--as:#1F2B4D;--on:#0D121C;--qb:#1F2B4D;--qt:#B7C7FF;--bb:#3A2D0E;--bt:#FFD479;--eb:#2E2150;--et:#D5BEFF;--wn:#3A2D0E;--wt:#FFD479;--sky:#1E2436;--sun:#E9B25A;--h1:#1F3F44;--h2:#1B5A57;--h3:#14706A}}
@@ -56,6 +57,11 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
 #queue-toast:empty{display:none}
 @keyframes toast-pop{from{opacity:0;transform:translateX(-50%) scale(.97)}to{opacity:1;transform:translateX(-50%) scale(1)}}
 @media(prefers-color-scheme:dark){#queue-toast{background:#e9edf0;color:#0e1318}}
+/* Geometry may morph, but palette changes must switch text and surfaces
+   together rather than leaving dark buttons beneath light-theme text. */
+#control{transition-property:width,height,padding,border-radius}
+#snooze-menu .op{transition:none}
+#queue-toast,#snooze-feedback{background:var(--tx);color:var(--bg)}
 @media(prefers-reduced-motion:reduce){#queue-toast.visible{animation:none}}
 #sr{position:absolute;clip:rect(0,0,0,0);width:1px;height:1px;overflow:hidden}
 @media (prefers-reduced-motion:reduce){#edge{animation:none!important}}
@@ -130,6 +136,7 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
  function hide(){edge.classList.remove('visible');pill.classList.remove('visible');menu.classList.remove('visible');pageToast.classList.remove('visible');}
  function paint(){
   const now=Date.now();const settings=core.settingsWithDefaults(state?.settings);
+  setOverlayTheme(settings.theme);
   evaluateQueueChange(now,settings);
   if(!state?.week||!settings.showRing){hide();lastAlert=null;return;}
   if(now-cachedAlertAt>=1000||cachedAlertAt===0){cachedAlert=core.selectedAlert(state.week,settings,state,now);cachedAlertAt=now;}

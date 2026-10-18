@@ -1,0 +1,24 @@
+/* Component colors follow the saved theme, including when it overrides the OS. */
+html[data-theme] body{color-scheme:inherit}
+.settings-reference .preset{border-color:var(--control-border)}
+.settings-reference .preset[aria-pressed=true]{background:var(--as);border-color:var(--ac);color:var(--ac)}
+.settings-reference .sw i{background:var(--switch-knob)}
+.settings-reference .sw[aria-checked=false]{background:var(--switch-off);border-color:var(--control-border)}
+.settings-reference .sw[aria-checked=false] i{background:var(--switch-off-knob)}
+.settings-reference .actions .btn.danger{color:var(--danger)}
+.week-picker .thumb{box-shadow:0 8px 22px var(--week-glow)}
+.week-picker .dow,.week-picker .num,.week-picker .pip{transition:none}
+.journey .ev.done .card{opacity:var(--done-opacity)}
+.journey .ev.done .time,.journey .gap-row.done .gtext{opacity:var(--done-gap-opacity)}
+.journey .fill.now::before{color:var(--selected-day-ink)}
+:root[data-theme=light] .week-picker .day.off{opacity:1;color:var(--mu)}
+:root[data-theme=light] .journey .ev.done .card{background:var(--bg)}
+:root[data-theme=light] .journey .ev.done .name,:root[data-theme=light] .journey .ev.done .time{color:var(--mu)}
+.theme-setting{padding:12px;border-bottom:1px solid var(--ln)}
+.theme-label{font-size:13px;font-weight:600;margin-bottom:8px}
+.theme-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.theme-options label{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;min-height:38px;box-sizing:border-box;border:1px solid var(--control-border);border-radius:10px;background:var(--bg);color:var(--mu);font-size:12px;font-weight:600;cursor:pointer}
+.theme-options input{position:absolute;width:1px;height:1px;opacity:0;margin:0}
+.theme-options label:has(input:checked){color:var(--ac);background:var(--as);border-color:var(--ac)}
+.theme-options label:has(input:focus-visible){outline:2px solid var(--ac);outline-offset:2px}
+.theme-options label:has(input:disabled){opacity:.7;cursor:wait}

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WFM Schedule Companion (Local)",
-  "version": "0.4.27",
+  "version": "0.4.28",
   "description": "Load WFM schedules as you browse weeks, follow your event journey, and get silent page-edge alerts.",
   "permissions": [
     "storage",
@@ -48,7 +48,8 @@
     {
       "resources": [
         "companion-core.mjs",
-        "queue-toast.mjs"
+        "queue-toast.mjs",
+        "theme.mjs"
       ],
       "matches": [
         "<all_urls>"

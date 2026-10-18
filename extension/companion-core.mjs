@@ -2,7 +2,7 @@
 export const DEFAULT_SETTINGS = Object.freeze({
   autoRefresh: false, leadMinutes: 5, alertBreaks: true, alertExceptions: true, alertShiftEnd: true,
   alertQueues: false, queueSwitchToast: true, showRing: true, reducedMotion: 'system',
-  timeZone: 'Africa/Nairobi', showQueuePrefixes: true,
+  timeZone: 'Africa/Nairobi', showQueuePrefixes: true, theme: 'system',
 });
 const DAY = 86400000;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -17,6 +17,7 @@ export function settingsWithDefaults(input={}) {
   s.alertQueues=false; // Queue switches use the at-time toast, never an advance ring alert.
   if (!validTimeZone(s.timeZone)) s.timeZone=DEFAULT_SETTINGS.timeZone;
   if (!['system','on','off'].includes(s.reducedMotion))s.reducedMotion='system';
+  if (!['system','light','dark'].includes(s.theme))s.theme='system';
   return s;
 }
 function formatter(zone){

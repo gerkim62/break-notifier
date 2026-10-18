@@ -12,7 +12,7 @@ writeFileSync('extension/schedule-components.css',`
 .journey,.week-picker,.settings-reference{
  --surface:var(--sf);--surface2:var(--bg);--line:var(--ln);--line2:var(--ln);
  --text:var(--tx);--soft:var(--tx);--muted:var(--mu);--accent:var(--ac);
- --amber:#F6BD4B;--coral:#FF9B7A;--violet:#B69CFF;--green:#5BD6A4;--sky:#6CC4F0;
+ --amber:var(--tone-amber,#F6BD4B);--coral:var(--tone-coral,#FF9B7A);--violet:var(--tone-violet,#B69CFF);--green:var(--tone-green,#5BD6A4);--sky:var(--tone-sky,#6CC4F0);
  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--dm:17px;
  font:14px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
@@ -65,10 +65,7 @@ writeFileSync('extension/schedule-components.css',`
  button{font:inherit;color:inherit}
  svg{display:block;flex-shrink:0}
 }
-@media(prefers-color-scheme:light){
- .journey,.week-picker,.settings-reference{--amber:#A46A00;--coral:#BF5134;--violet:#7953C8;--green:#158968;--sky:#257DA7}
- .week-picker .day[aria-pressed="true"] .num{color:#fff}
- .week-picker .day[aria-pressed="true"] .dow{color:rgba(255,255,255,.75)}
- .week-picker .day[aria-pressed="true"] .pip{background:#fff}
-}
+.week-picker .day[aria-pressed="true"] .num{color:var(--selected-day-ink,#0A0F16)}
+.week-picker .day[aria-pressed="true"] .dow{color:var(--selected-day-muted,rgba(10,15,22,.65))}
+.week-picker .day[aria-pressed="true"] .pip{background:var(--selected-day-ink,#0A0F16)}
 `);

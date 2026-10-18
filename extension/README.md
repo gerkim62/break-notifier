@@ -1,4 +1,6 @@
-# WFM Schedule Companion v0.4.27
+# WFM Schedule Companion v0.4.28
+
+**Settings → Display → Theme** offers System, Light and Dark, with a saved preference. System follows live OS appearance changes; explicit Light/Dark override the OS. The popup and isolated alert/snooze/toast/WFM-banner UI share theme tokens. Light mode fixes completed-event and day-off readability, selected-date contrast, reminder borders, switch knobs and tracks, diagnostic text and destructive-action colors. Theme selection is keyboard accessible, survives reopening, restores the saved choice on a failed save, and does not issue WFM requests or change the website underneath overlays.
 
 Shifts are confirmed by a successful check **within the 12 hours before their native start time**, or by a check during an already-started shift. That confirmation remains valid through shift end, including overnight shifts; cache age alone does not make a confirmed shift stale. Future shifts outside the window remain provisional and use cached data. A new start time returned by WFM determines a new confirmation window. Past days do not auto-refresh. Missing weeks load immediately; days off and unknown days get a daily check when opened. The schedule timezone defaults to Africa/Nairobi.
 
@@ -20,7 +22,7 @@ Snooze now settles the island's initial width before pointer interaction. Enter/
 
 Previous/next week buttons, Today, arrow keys and swipes update the selected day. Cached weeks appear immediately, and due or missing weeks load on opening. Refresh retries or updates the selected week and retains today's alert schedule. Up to 12 weeks are saved.
 
-Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.27 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
+Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.28 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
 
 Verification is in the workspace's `verification/` folder. Real Chrome renders the production popup/content scripts using fixture schedules and browser APIs. A footer comparison checks its appearance against the original ZIP's popup. Long-schedule checks verify whole-page scrolling, access to the final activity, countdown alignment, and preserved scroll position. Other checks cover the day picker, journey, movable ring, week navigation/cache, HTML settings presets/switches and diagnostics, themes, and mouse/keyboard snooze. Authenticated WFM network access was not available in this environment.
 

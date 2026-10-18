@@ -52,7 +52,7 @@ export async function init(page,state=fixture()){
    async set(patch){const changes={};for(const [key,value] of Object.entries(patch)){changes[key]={oldValue:data[name][key],newValue:structuredClone(value)};data[name][key]=structuredClone(value);}queueMicrotask(()=>storageListeners.forEach(fn=>fn(changes,name)));},
    async remove(keys){for(const key of Array.isArray(keys)?keys:[keys])delete data[name][key];}
   });
-  window.chrome={runtime:{lastError:null,getURL:path=>location.origin+'/extension/'+path,getManifest:()=>({version:'0.4.27'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event(),onStartup:event(),sendMessage(message,callback){window.__messages.push(message);let answered=false;for(const fn of listeners){const handled=fn(message,{url:location.href},r=>{if(!answered){answered=true;callback?.(r);}});if(handled===true)break;} }},
+  window.chrome={runtime:{lastError:null,getURL:path=>location.origin+'/extension/'+path,getManifest:()=>({version:'0.4.28'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event(),onStartup:event(),sendMessage(message,callback){window.__messages.push(message);let answered=false;for(const fn of listeners){const handled=fn(message,{url:location.href},r=>{if(!answered){answered=true;callback?.(r);}});if(handled===true)break;} }},
    storage:{local:area('local'),session:area('session'),onChanged:{addListener:fn=>storageListeners.push(fn)}},
    alarms:{clear:async()=>{},create:async()=>{},onAlarm:event()},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},
    tabs:{query:async()=>[],sendMessage:async()=>{},create:async()=>({id:1}),update:async()=>{}},windows:{update:async()=>{}}};

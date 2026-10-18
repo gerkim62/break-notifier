@@ -3,6 +3,7 @@ import {weekPicker,journey} from './schedule-components.mjs';
 import {icon,countdownRing,paintRing} from './ui-icons.mjs';
 import {PausableToastTimer} from './queue-toast.mjs';
 import {captureMotion,restoreMotion,fadeContent} from './motion.mjs';
+import {bindTheme} from './theme.mjs';
 import {settingsWithDefaults,localDate,localTime,buildDaySegments,contextForDay,formatDuration,dayForDate,eventBounds,wallTimeToEpoch,segmentProgress,alertColor} from './companion-core.mjs';
 import {scheduleFreshness,scheduleRefreshDue,scheduleRefreshFailure} from './schedule-freshness.mjs';
 
@@ -12,6 +13,7 @@ const send=message=>new Promise((resolve,reject)=>chrome.runtime.sendMessage(mes
  const error=chrome.runtime.lastError;if(error)reject(new Error('Background worker unavailable'));else resolve(response);
 }));
 const app=$('#app'),style=$('#visual-css');
+const setPopupTheme=bindTheme(document.documentElement);
 let state=null,selectedDate=null,filter='special',mode='schedule',loginBusy=false,activeVariant='',activeDate='',statusTimer=null;
 let lastInfoOpen=false;
 let retainedPicker=null;
@@ -20,6 +22,10 @@ const weekLoads=new Map(),visitedChecks=new Set(),weekErrors=new Map();
 let savedScheduleScroll=0;
 let popupToastClock=null,toastActionBusy=false,toastVersion=0;
 const settings=()=>settingsWithDefaults(state?.settings);
+function syncAppearance(){
+ const preference=settings().theme;setPopupTheme(preference);
+ for(const input of $$('input[name=theme]',app))input.checked=input.value===preference;
+}
 const today=()=>localDate(Date.now(),settings().timeZone);
 const weekStart=date=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10);};
 const week=()=>state?.week?.weekStart===weekStart(today())?state.week:null;
@@ -296,6 +302,7 @@ function syncLiveRing(){
  else dest.classList.add('header-ring-slot');
 }
 function render(){
+ syncAppearance();
  if(mode==='settings'){hideLiveRing();renderSettings();return;}
  selectedDate??=today();
  const variant=determineVariant();installScreen(variant);
@@ -387,7 +394,7 @@ async function loadWeek(date,{manual=false}={}){
 async function refreshSchedule(){return loadWeek(selectedDate??today(),{manual:true});}
 
 async function loadState(){const result=await send({type:'WFM_GET_STATE'});if(!result?.ok)throw Error('WFM worker returned invalid state');state=result.state;render();}
-async function settingChange(patch){try{const response=await send({type:'WFM_SETTINGS_UPDATE',patch});if(response?.ok){state=response.state;showToast('Settings saved.','success');}else showToast('Could not save settings.');}catch{showToast('Could not save settings.');} }
+async function settingChange(patch){try{const response=await send({type:'WFM_SETTINGS_UPDATE',patch});if(response?.ok){state=response.state;syncAppearance();showToast('Settings saved.','success');}else showToast('Could not save settings.');}catch{showToast('Could not save settings.');} }
 function diagnosticCounts(report){
  const rpcEvents=(report?.runs??[]).flatMap(run=>run.events??[]);
  const uiEvents=report?.companionEvents??[];
@@ -414,11 +421,17 @@ function renderSettings(){
  app.innerHTML=`<div class="pop settings-reference"><header class="settings-heading"><button class="settings-back" id="back" type="button" aria-label="Back to schedule">${icon('back',20,2)}</button><h1>Alert settings</h1></header>
  <div class="settings-body">
   <section class="box"><h2>Remind me before<small>Choose when to get a heads-up</small></h2><div class="presets" role="group" aria-label="Reminder timing"><button class="preset" type="button" data-lead="2">2 min</button><button class="preset" type="button" data-lead="5">5 min</button><button class="preset" type="button" data-lead="10">10 min</button></div><div class="preview">${icon('bell',14,1.9)}<span id="lead-note"></span></div></section>
-  <div class="label">Display</div><div class="list" id="display-options" style="margin-top:0"></div>
+  <div class="label">Display</div><div class="list" id="display-options" style="margin-top:0"><div class="theme-setting"><div class="theme-label" id="theme-label">Theme</div><div class="theme-options" role="radiogroup" aria-labelledby="theme-label">${[['system','System','system'],['light','Light','sun'],['dark','Dark','moon']].map(([value,label,symbol])=>`<label><input type="radio" name="theme" value="${value}">${icon(symbol,15)}<span>${label}</span></label>`).join('')}</div></div></div>
   <div class="label">Alert me about</div><div class="list" id="flags" style="margin-top:0"></div>
   <section class="diag"><b class="dh">Diagnostics</b> · <span id="diag-health" class="ok">Checking…</span><div id="diag-summary">Loading diagnostics…</div><div class="actions"><button class="btn" id="export" type="button">Export</button><button class="btn" id="copy-json" type="button">Copy JSON</button><button class="btn danger" id="clear" type="button">Clear</button></div><small id="diag-status" role="status"></small></section>
  </div></div>`;
  const s=settings();
+ syncAppearance();
+ const themeInputs=$$('input[name=theme]',app);
+ for(const input of themeInputs)input.onchange=async()=>{
+  if(!input.checked)return;setPopupTheme(input.value);themeInputs.forEach(option=>option.disabled=true);
+  try{await settingChange({theme:input.value});}finally{syncAppearance();themeInputs.forEach(option=>option.disabled=false);}
+ };
  const chips=$$('[data-lead]',app);
  const highlightChip=value=>chips.forEach(button=>{const active=Number(button.dataset.lead)===value;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
  const preview=value=>{
@@ -446,7 +459,7 @@ function renderSettings(){
 }
 document.addEventListener('click',event=>{if(lastInfoOpen&&!event.target.closest('.schedule-info-button')){lastInfoOpen=false;const button=$('.schedule-info-button',app);if(button){button.setAttribute('aria-expanded','false');button.querySelector('.schedule-info-popover').hidden=true;}}});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&lastInfoOpen){lastInfoOpen=false;const button=$('.schedule-info-button',app);if(button){button.setAttribute('aria-expanded','false');button.querySelector('.schedule-info-popover').hidden=true;button.focus();}}});
-chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.wfm_companion_state_v1){state=changes.wfm_companion_state_v1.newValue;if(mode==='schedule')render();}});
+chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.wfm_companion_state_v1){state=changes.wfm_companion_state_v1.newValue;syncAppearance();if(mode==='schedule')render();}});
 (async()=>{try{await loadState();ensureWeekLoaded(selectedDate??today());}catch{state={lastError:{reason:'extension_error',message:'Background worker unavailable'},settings:settingsWithDefaults()};render();}
  setInterval(()=>{if(mode==='schedule'){
   if(determineVariant()!==activeVariant)render();

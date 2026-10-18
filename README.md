@@ -4,7 +4,7 @@ The updated extension is in [`extension/`](extension/), rebuilt on the supplied 
 
 The filter pills have been replaced with keyboard-accessible underline tabs, with breathing room between activity cards. Gaps say “between activities” or count down to the next activity; they do not imply free time. Empty filters say “No schedule detected.” Cached data appears immediately; missing data shows loading, retry or login feedback. Concurrent requests for one week share one RPC read.
 
-v0.4.27 confirms shifts with one successful check **within the 12 hours before their start**, or on opening an unconfirmed shift already in progress. The confirmed schedule stays current until shift end, including overnight shifts. Future shifts outside their window remain provisional and use the cache. Missing weeks load immediately; days off and unknown days get one daily check on opening. Manual Refresh always retries. Checks run on opening a day or when an already-open popup enters its confirmation window; browser startup and badge alarms do not fetch schedules.
+v0.4.28 confirms shifts with one successful check **within the 12 hours before their start**, or on opening an unconfirmed shift already in progress. The confirmed schedule stays current until shift end, including overnight shifts. Future shifts outside their window remain provisional and use the cache. Missing weeks load immediately; days off and unknown days get one daily check on opening. Manual Refresh always retries. Checks run on opening a day or when an already-open popup enters its confirmation window; browser startup and badge alarms do not fetch schedules.
 
 The existing amber timestamp and highlighted header Refresh button show an unconfirmed saved schedule. While checking, the popup shows **Checking…**. A failed check keeps a persistent amber message, **Couldn’t confirm this shift. Showing saved schedule.** Refresh appears only in the header; the warning adds a Log in action when authentication is required. Failure does not mark data confirmed or advance its successful-check timestamp. Failed automatic checks are not repeated on each open for the same shift; manual retry remains available.
 
@@ -14,7 +14,9 @@ The header and countdown rings share one SVG design and show the same live progr
 
 The session-expired toast includes a **Log in** action. Toasts pause dismissal while hovered, keyboard-focused, or checking login, then resume their remaining lifetime. They appear above the action footer.
 
-- Install: extract `wfm-schedule-companion-v0.4.27-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
+Choose **System, Light or Dark** in **Settings → Display → Theme**. The preference is saved and applies to the popup, snooze controls, queue toasts and WFM banner. System follows OS appearance changes; explicit choices override it. Light mode uses readable completed-event text, selected dates, switch states, reminder controls and diagnostic actions. Theme changes do not fetch WFM or recolor the website under extension overlays.
+
+- Install: extract `wfm-schedule-companion-v0.4.28-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
 - Screenshots and pixel comparisons: [`verification/index.html`](verification/index.html).
 - Source: [`extension/popup.js`](extension/popup.js), [`extension/schedule-components.mjs`](extension/schedule-components.mjs), [`extension/schedule-components.css`](extension/schedule-components.css), [`extension/ring.js`](extension/ring.js), [`extension/background.mjs`](extension/background.mjs).
 

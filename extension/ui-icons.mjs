@@ -1,4 +1,7 @@
 const paths={
+ system:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>',
+ sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>',
+ moon:'<path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14Z"/>',
  settings:'<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
  back:'<path d="M15 6l-6 6 6 6"/>',next:'<path d="M9 6l6 6-6 6"/>',
  bell:'<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4l2-2z"/><path d="M10 21h4"/>',
@@ -15,7 +18,7 @@ export function icon(name,size=18,stroke=1.8){return `<svg width="${size}" heigh
 
 // Both sizes use the same geometry. pathLength normalizes progress without
 // rounding the circumference or changing stroke thickness as the arc grows.
-export function countdownRing(size=100){return `<svg class="countdown-svg" aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 20 20"><circle class="ring-track" cx="10" cy="10" r="7.5" pathLength="100" fill="none" stroke="var(--ln)" stroke-width="2"/><circle class="live-stroke" cx="10" cy="10" r="7.5" pathLength="100" fill="none" stroke="#30D6AC" stroke-width="2" stroke-linecap="round" stroke-dasharray="0 100" opacity="0" transform="rotate(-90 10 10)"/></svg>`;}
+export function countdownRing(size=100){return `<svg class="countdown-svg" aria-hidden="true" width="${size}" height="${size}" viewBox="0 0 20 20"><circle class="ring-track" cx="10" cy="10" r="7.5" pathLength="100" fill="none" stroke="var(--ln)" stroke-width="2"/><circle class="live-stroke" cx="10" cy="10" r="7.5" pathLength="100" fill="none" stroke="var(--ring-color,#30D6AC)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0 100" opacity="0" transform="rotate(-90 10 10)"/></svg>`;}
 
 export function paintRing(svg,progress){
  if(!svg)return;

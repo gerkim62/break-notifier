@@ -7,12 +7,13 @@
   try { chrome.runtime.sendMessage(message,r=>resolve(chrome.runtime.lastError?null:r)); }
   catch {resolve(null);}
  });
- let reader,compare,core;
+ let reader,compare,core,theme;
  try{
-  [reader,compare,core]=await Promise.all([
+  [reader,compare,core,theme]=await Promise.all([
    import(chrome.runtime.getURL('wfm-dom-reader.mjs')),
    import(chrome.runtime.getURL('wfm-dom-compare.mjs')),
    import(chrome.runtime.getURL('companion-core.mjs')),
+   import(chrome.runtime.getURL('theme.mjs')),
   ]);
  }catch{
   await send({type:'WFM_UI_DIAGNOSTIC',code:'wfm_banner_error',reason:'module_import_failed'});
@@ -20,6 +21,7 @@
  }
  const host=document.createElement('div');
  host.style.cssText='position:fixed;z-index:2147483647;left:0;right:0;top:0;pointer-events:none';
+ const setBannerTheme=theme.bindTheme(host);
  const shadow=host.attachShadow({mode:'closed'});
  shadow.innerHTML=`<style>:host{--bg:#F3F5F9;--sf:#fff;--ln:#E3E8F0;--tx:#0F1B2E;--mu:#5B6679;--ac:#2F5BEA;--as:#E8EEFE;--on:#fff;--qb:#E8EEFE;--qt:#1D3FAE;--bb:#FFEFC0;--bt:#7A4A00;--eb:#F1E6FF;--et:#5B21B6;--wn:#FFF3CF;--wt:#6B4200;--sky:#FFF0D2;--sun:#FBBF5C;--h1:#BFE6D6;--h2:#7FD0B2;--h3:#4FB394}
 @media (prefers-color-scheme:dark){:host{--bg:#0D121C;--sf:#151C2A;--ln:#263044;--tx:#E8EDF6;--mu:#9AA7BD;--ac:#8AA5FF;--as:#1F2B4D;--on:#0D121C;--qb:#1F2B4D;--qt:#B7C7FF;--bb:#3A2D0E;--bt:#FFD479;--eb:#2E2150;--et:#D5BEFF;--wn:#3A2D0E;--wt:#FFD479;--sky:#1E2436;--sun:#E9B25A;--h1:#1F3F44;--h2:#1B5A57;--h3:#14706A}}
@@ -31,7 +33,7 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
 #banner{position:fixed;z-index:2147483647;display:none;pointer-events:auto;max-width:calc(100vw - 24px)}#banner.show{display:flex}
 #banner{color:var(--tx)!important}
 #banner #title{color:var(--tx)!important;line-height:1.35}
-#banner .go{color:#0d121c!important;background:#8aa5ff!important}
+#banner .go{color:var(--on)!important;background:var(--ac)!important}
 #banner .x{color:var(--mu)!important}
 #banner button:focus-visible,#banner input:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 </style><div class="bn" id="banner"><svg aria-hidden="true" height="36" viewBox="0 0 36 36" width="36"><circle cx="18" cy="18" fill="none" r="14" stroke="var(--ln)" stroke-width="5"></circle><circle cx="18" cy="18" fill="none" r="14" stroke="#30D6AC" stroke-dasharray="58 88" stroke-linecap="round" stroke-width="5" transform="rotate(-90 18 18)"></circle></svg><div><p id="title">New schedule detected for today, Monday 19th.</p></div><button class="go" id="apply">Refresh schedule</button><button aria-label="Close" class="x" id="close"><svg aria-hidden="true" fill="none" height="18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="18"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>`;
@@ -48,6 +50,7 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
   const response=await send({type:'WFM_GET_STATE'});
   if(!response?.ok)return;
   const {domChange,bannerHiddenFingerprint,settings}=response.state;
+  setBannerTheme(settings.theme);
   const show=visibleSchedule&&Boolean(domChange?.fingerprint)&&domChange.fingerprint!==bannerHiddenFingerprint;
   banner.classList.toggle('show',show);
   if(show){const today=core.localDate(Date.now(),settings.timeZone);shadow.querySelector('#title').textContent=`New schedule detected for today, ${shortDate(today)}.`;}
