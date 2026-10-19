@@ -4,7 +4,7 @@ import {icon,countdownRing,paintRing} from './ui-icons.mjs';
 import {PausableToastTimer} from './queue-toast.mjs';
 import {captureMotion,restoreMotion,captureView,slideView,cancelContentTransition} from './motion.mjs';
 import {bindTheme} from './theme.mjs';
-import {settingsWithDefaults,localDate,localTime,buildDaySegments,contextForDay,formatDuration,dayForDate,eventBounds,wallTimeToEpoch,segmentProgress,alertColor} from './companion-core.mjs';
+import {settingsWithDefaults,localDate,localTime,buildDaySegments,contextForDay,formatDuration,dayForDate,eventBounds,wallTimeToEpoch,segmentProgress,alertColor,isDuringShift} from './companion-core.mjs';
 import {scheduleFreshness,scheduleRefreshDue,scheduleRefreshFailure} from './schedule-freshness.mjs';
 
 const $=(selector,root=document)=>root.querySelector(selector);
@@ -220,22 +220,90 @@ const holdLeft=()=>Math.max(0,(state?.holdEndsAt??0)-Date.now());
  function toolsCall(payload){
   return send({type:'WFM_TOOLS',...payload}).then(result=>{if(!result?.ok)showToast(result?.reason==='too_many_alarms'?'You can keep up to 10 alarms.':result?.reason==='invalid_time'?'Pick a valid time.':'Could not save that change.');else state=result.state;return result;}).catch(()=>{showToast('Extension background service unavailable.');return null;});
  }
+ function from24Hour(time24){
+  const [hStr,mStr]=String(time24||'08:00').split(':');
+  let h=parseInt(hStr,10)||0,m=parseInt(mStr,10)||0;
+  const ampm=h>=12?'PM':'AM';
+  h=h%12;if(h===0)h=12;
+  return {hour:String(h).padStart(2,'0'),minute:String(m).padStart(2,'0'),ampm};
+ }
+ function to24Hour(h12,min,ampm){
+  let h=parseInt(h12,10);if(isNaN(h))h=12;h=Math.max(1,Math.min(12,h));
+  let m=parseInt(min,10);if(isNaN(m))m=0;m=Math.max(0,Math.min(59,m));
+  if(ampm==='PM'&&h<12)h+=12;
+  if(ampm==='AM'&&h===12)h=0;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+ }
+ let activeAlarmModal=null;
+ function closeAlarmModal(){
+  if(!activeAlarmModal)return;
+  activeAlarmModal.classList.remove('open');
+  const el=activeAlarmModal;activeAlarmModal=null;
+  setTimeout(()=>{el.remove();},200);
+ }
+ function openAlarmModal(existing=null){
+  closeAlarmModal();
+  const lead=settings().leadMinutes||5;
+  const initial=existing?from24Hour(existing.time):from24Hour(localTime(Date.now(),settings().timeZone));
+  let curAmPm=initial.ampm;
+  const overlay=h('div','al-modal-overlay');
+  overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-labelledby','al-modal-title');
+  overlay.innerHTML=`<div class="al-modal-card"><div class="al-modal-head"><div class="al-modal-title" id="al-modal-title">${existing?'Edit Alarm':'New Alarm'}</div><button type="button" class="al-modal-close" id="modal-cancel-btn" aria-label="Close dialog">${icon('close',14,2)}</button></div><form id="al-modal-form"><div class="al-field"><label class="al-field-lbl" for="al-h-in">Time</label><div class="al-time-picker"><div class="al-time-inputs"><input type="text" inputmode="numeric" pattern="[0-9]*" class="al-digit-box" id="al-h-in" maxlength="2" value="${initial.hour}" aria-label="Hour (1 to 12)"><span class="al-colon">:</span><input type="text" inputmode="numeric" pattern="[0-9]*" class="al-digit-box" id="al-m-in" maxlength="2" value="${initial.minute}" aria-label="Minute (00 to 59)"></div><div class="al-ampm-group" role="group" aria-label="AM or PM"><button type="button" class="al-ampm-btn ${curAmPm==='AM'?'on':''}" data-val="AM" aria-pressed="${curAmPm==='AM'}">AM</button><button type="button" class="al-ampm-btn ${curAmPm==='PM'?'on':''}" data-val="PM" aria-pressed="${curAmPm==='PM'}">PM</button></div></div><div class="al-lead-hint">${icon('clock',13)}<span>Alerts ${lead} min before via page ring</span></div></div><div class="al-field"><label class="al-field-lbl" for="al-lbl-in">Label <span class="al-opt">optional</span></label><input type="text" class="al-text-input" id="al-lbl-in" maxlength="40" placeholder="e.g. Break, Standup, Wrap-up" value="${existing?.label&&existing.label!=='Alarm'?existing.label:''}"></div><div class="al-modal-actions"><button type="button" class="al-btn ghost" id="modal-close-action">Cancel</button><button type="submit" class="al-btn" id="modal-save-btn">${existing?'Save Changes':'Add Alarm'}</button></div></form></div>`;
+  (app||document.body).append(overlay);
+  activeAlarmModal=overlay;
+  void overlay.offsetWidth;
+  overlay.classList.add('open');
+  const hInput=$('#al-h-in',overlay),mInput=$('#al-m-in',overlay),lblInput=$('#al-lbl-in',overlay),ampmBtns=$$('.al-ampm-btn',overlay);
+  ampmBtns.forEach(btn=>{btn.onclick=()=>{curAmPm=btn.dataset.val;ampmBtns.forEach(b=>{const on=b.dataset.val===curAmPm;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));});};});
+  hInput.onfocus=()=>hInput.select();
+  mInput.onfocus=()=>mInput.select();
+  hInput.oninput=()=>{
+   let v=hInput.value.replace(/\D/g,'');
+   if(v.length>=2){let n=parseInt(v,10);if(n>12)n=12;if(n<1)n=1;hInput.value=String(n).padStart(2,'0');mInput.focus();mInput.select();}
+  };
+  hInput.onblur=()=>{let n=parseInt(hInput.value,10);if(isNaN(n)||n<1)n=12;if(n>12)n=12;hInput.value=String(n).padStart(2,'0');};
+  mInput.oninput=()=>{let v=mInput.value.replace(/\D/g,'');if(v.length>=2){let n=parseInt(v,10);if(n>59)n=59;mInput.value=String(n).padStart(2,'0');}};
+  mInput.onblur=()=>{let n=parseInt(mInput.value,10);if(isNaN(n)||n<0)n=0;if(n>59)n=59;mInput.value=String(n).padStart(2,'0');};
+  $('#modal-cancel-btn',overlay).onclick=closeAlarmModal;
+  $('#modal-close-action',overlay).onclick=closeAlarmModal;
+  overlay.onclick=e=>{if(e.target===overlay)closeAlarmModal();};
+  overlay.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();closeAlarmModal();}};
+  $('#al-modal-form',overlay).onsubmit=async e=>{
+   e.preventDefault();
+   const time24=to24Hour(hInput.value,mInput.value,curAmPm);
+   const label=lblInput.value.trim()||'Alarm';
+   closeAlarmModal();
+   const action=existing?'edit_alarm':'add_alarm';
+   const result=await toolsCall({action,id:existing?.id,time:time24,label});
+   if(result?.ok)showToast(existing?'Alarm updated.':'Alarm added.','success');
+   render();
+  };
+  setTimeout(()=>hInput.focus(),60);
+ }
  function alarmsPanel(table){
   table.classList.add('journey');table.classList.remove('missing-week');delete table.dataset.loadStatus;
   const ear=state?.earChange??{enabled:false,intervalMin:60};
   const holdTimer=state?.holdTimer??{enabled:false};
-  const sig=JSON.stringify([state?.userAlarms??[],ear.enabled,ear.intervalMin,holdTimer.enabled,Boolean(state?.holdEndsAt)]);
-  if(table.dataset.panel!=='alarms'||table.dataset.sig!==sig){table.dataset.panel='alarms';table.dataset.sig=sig;buildAlarms(table,ear);}
+  const inShift=isDuringShift(state?.week,settings(),Date.now());
+  const sig=JSON.stringify([state?.userAlarms??[],ear.enabled,ear.intervalMin,holdTimer.enabled,Boolean(state?.holdEndsAt),inShift]);
+  if(table.dataset.panel!=='alarms'||table.dataset.sig!==sig){table.dataset.panel='alarms';table.dataset.sig=sig;buildAlarms(table,ear,inShift);}
   const sub=$('#hold-sub',table);
   if(sub){
    const now=Date.now(),ends=state?.holdEndsAt;
    if(!holdTimer.enabled)sub.textContent='Show draggable 1 min timer on web pages';
+   else if(!inShift)sub.textContent='Enabled · Appears on web pages during your shift';
    else if(!ends)sub.textContent='On-page circular timer enabled · Idle (1:00)';
    else if(ends>now)sub.textContent=`On-page timer running · ${Math.ceil((ends-now)/1000)}s left`;
    else sub.textContent=`On-page timer overdue · -${Math.floor((now-ends)/1000)}s`;
   }
+  const earSub=$('#ear-sub',table);
+  if(earSub){
+   if(!ear.enabled)earSub.textContent='Remind me to switch ears';
+   else if(!inShift)earSub.textContent=`Active during shift (every ${ear.intervalMin} min)`;
+   else earSub.textContent=`Reminds you every ${ear.intervalMin} min`;
+  }
  }
- function buildAlarms(table,ear){
+ function buildAlarms(table,ear,inShift=true){
   const holdTimer=state?.holdTimer??{enabled:false},holdRunning=Boolean(state?.holdEndsAt);
   const alarms=state?.userAlarms??[];
   const root=h('div','alarms-panel');
@@ -246,31 +314,38 @@ const holdLeft=()=>Math.max(0,(state?.holdEndsAt??0)-Date.now());
   holdSw.onclick=async()=>{holdSw.disabled=true;await toolsCall({action:'toggle_hold_timer',enabled:!holdTimer.enabled});render();};
   const earCard=h('section','al-card');
   earCard.innerHTML=cardHtml('ear-sub','violet','182,156,255','people','Ear change')+'<button class="al-sw" id="ear-sw" type="button" role="switch"><i></i></button><div class="al-chips" role="group" aria-label="Ear change interval"></div>';
-  $('#ear-sub',earCard).textContent=ear.enabled?`Reminds you every ${ear.intervalMin} min`:'Remind me to switch ears';
+  $('#ear-sub',earCard).textContent=ear.enabled?(inShift?`Reminds you every ${ear.intervalMin} min`:`Active during shift (every ${ear.intervalMin} min)`):'Remind me to switch ears';
   const sw=$('#ear-sw',earCard);sw.setAttribute('aria-label','Ear change reminder');sw.setAttribute('aria-checked',String(Boolean(ear.enabled)));
   sw.onclick=async()=>{sw.disabled=true;await toolsCall({action:'ear_change',enabled:!ear.enabled});render();};
   for(const minutes of [30,45,60]){
    const chip=h('button','al-chip',`${minutes} min`);chip.type='button';chip.setAttribute('aria-pressed',String(ear.intervalMin===minutes));
    chip.onclick=async()=>{await toolsCall({action:'ear_change',intervalMin:minutes});render();};$('.al-chips',earCard).append(chip);
   }
-  const label=h('div','al-label','My alarms');
+  const lead=settings().leadMinutes||5;
+  const header=h('div','al-header');
+  header.innerHTML='<span class="al-label">My alarms</span><button type="button" class="al-add-btn" id="open-add-alarm">'+icon('plus',12,2.5)+'<span>Add Alarm</span></button>';
+  $('#open-add-alarm',header).onclick=()=>openAlarmModal(null);
   const list=h('div','al-list');
-  if(!alarms.length)list.append(h('div','empty-hint','No alarms yet. Add one below.'));
+  if(!alarms.length){
+   const empty=h('div','empty-hint');
+   empty.innerHTML='No alarms yet. <button type="button" class="al-empty-btn" id="empty-add-alarm">Add one</button>';
+   $('#empty-add-alarm',empty).onclick=()=>openAlarmModal(null);
+   list.append(empty);
+  }
   for(const alarm of alarms){
    const row=h('div','al-row'+(alarm.enabled?'':' off'));
-   row.innerHTML='<b class="al-time"></b><span class="al-name"></span><button class="al-sw" type="button" role="switch"><i></i></button><button class="al-del" type="button"></button>';
-   $('.al-time',row).textContent=alarm.time;$('.al-name',row).textContent=alarm.label;
+   const p=from24Hour(alarm.time);
+   row.innerHTML=`<div class="al-time-col"><b class="al-time-12">${p.hour}:${p.minute} <span style="font-size:10px">${p.ampm}</span></b><span class="al-time-sub">${lead}m ring</span></div><span class="al-name"></span><button class="al-sw" type="button" role="switch"><i></i></button><button class="al-edit" type="button"></button><button class="al-del" type="button"></button>`;
+   $('.al-name',row).textContent=alarm.label;
    const toggle=$('.al-sw',row);toggle.setAttribute('aria-label',`${alarm.label} at ${alarm.time}`);toggle.setAttribute('aria-checked',String(alarm.enabled));
    toggle.onclick=async()=>{toggle.disabled=true;await toolsCall({action:'toggle_alarm',id:alarm.id,enabled:!alarm.enabled});render();};
+   const edit=$('.al-edit',row);edit.innerHTML=icon('timer',14,2);edit.setAttribute('aria-label',`Edit alarm ${alarm.label}`);
+   edit.onclick=()=>openAlarmModal(alarm);
    const del=$('.al-del',row);del.innerHTML=icon('close',14,2);del.setAttribute('aria-label',`Delete alarm ${alarm.label}`);
    del.onclick=async()=>{del.disabled=true;await toolsCall({action:'delete_alarm',id:alarm.id});render();};
    list.append(row);
   }
-  const form=h('form','al-form');
-  form.innerHTML='<input id="al-time" type="time" required aria-label="Alarm time"><input id="al-label" type="text" maxlength="40" placeholder="Label (optional)" aria-label="Alarm label"><button class="al-btn" type="submit">Add</button>';
-  $('#al-time',form).value=localTime(Date.now(),settings().timeZone);
-  form.onsubmit=async event=>{event.preventDefault();const time=$('#al-time',form).value;if(!time)return;const result=await toolsCall({action:'add_alarm',time,label:$('#al-label',form).value});if(result?.ok)showToast('Alarm added.','success');render();};
-  root.append(holdCard,earCard,label,list,form);
+  root.append(holdCard,earCard,header,list);
   table.replaceChildren(root);
  }
  function filterTabs(table){

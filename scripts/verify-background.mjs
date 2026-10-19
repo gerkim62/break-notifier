@@ -3,11 +3,11 @@ import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 import {fixture,NOW} from './browser-harness.mjs';
-const report={checks:[]},listeners=[],data={local:{wfm_companion_state_v1:fixture()},session:{}},requests=[],reloads=[],updates=[],windowUpdates=[];
+const report={checks:[]},listeners=[],data={local:{wfm_companion_state_v1:fixture()},session:{}},requests=[],reloads=[],updates=[],windowUpdates=[],tabMessages=[],alarmListeners=[];
 const originalNow=Date.now;let clock=Date.parse(NOW);Date.now=()=>clock;
 const event={addListener(){}};
 const area=name=>({get:async key=>Array.isArray(key)?Object.fromEntries(key.map(k=>[k,data[name][k]])):{[key]:data[name][key]},set:async patch=>Object.assign(data[name],structuredClone(patch)),remove:async keys=>{for(const k of keys)delete data[name][k];}});
-globalThis.chrome={storage:{local:area('local'),session:area('session')},runtime:{getManifest:()=>({version:'0.4.18'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event,onStartup:event},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},alarms:{clear:async()=>{},create:async()=>{},onAlarm:event},tabs:{query:async()=>[],sendMessage:async()=>{},update:async(id,opts)=>{updates.push({id,opts});},reload:async id=>{reloads.push(id);}},windows:{update:async(id,opts)=>{windowUpdates.push({id,opts});}}};
+globalThis.chrome={storage:{local:area('local'),session:area('session')},runtime:{getManifest:()=>({version:'0.4.18'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event,onStartup:event},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},alarms:{clear:async()=>{},create:async()=>{},onAlarm:{addListener:fn=>alarmListeners.push(fn)}},tabs:{query:async()=>[{id:42,url:'http://svdt1ipccwfm09:8070/wfm/Agent?#Schedule;view=MY_SCHEDULE',active:false,windowId:7}],sendMessage:async(id,msg)=>{tabMessages.push({id,msg});},update:async(id,opts)=>{updates.push({id,opts});},reload:async id=>{reloads.push(id);}},windows:{update:async(id,opts)=>{windowUpdates.push({id,opts});}}};
 globalThis.__fetchWeek=async date=>{
  requests.push(date);const source=fixture().week,start=new Date(date+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-(start.getUTCDay()+6)%7);const monday=start.toISOString().slice(0,10);
  return {...source,ok:true,weekStart:monday,weekEnd:new Date(+start+6*86400000).toISOString().slice(0,10),days:source.days.map((day,i)=>{const date=new Date(+start+i*86400000).toISOString().slice(0,10);return {...day,date,events:day.events.map(e=>({...e,startDate:date,endDate:date}))};})};
@@ -55,6 +55,32 @@ try{
  assert.ok(updates.some(u=>u.id===42&&u.opts?.active===true));
  assert.ok(windowUpdates.some(w=>w.id===7&&w.opts?.focused===true));
  report.checks.push('Reused existing WFM tab is reloaded and focused');
+ clock=Date.parse('2026-10-18T11:27:00Z');
+ const addRes=await new Promise(resolve=>handle({type:'WFM_TOOLS',action:'add_alarm',time:'14:30',label:'Standup'},{},resolve));
+ assert.equal(addRes.ok,true);
+ const core=await import('../extension/companion-core.mjs');
+ const alert=core.selectedAlert(addRes.state.week,addRes.state.settings,addRes.state,clock);
+ assert.equal(alert?.name,'Standup');
+ assert.equal(alert?.type,'alarm');
+ assert.equal(alert?.lead,Number(addRes.state.settings.leadMinutes)*60000);
+ await new Promise(resolve=>handle({type:'WFM_TOOLS',action:'ear_change',enabled:true,intervalMin:30},{},resolve));
+ tabMessages.length=0;
+ for(const fn of alarmListeners)fn({name:'wfm-tool:ear'});
+ await new Promise(r=>setTimeout(r,50));
+ assert.ok(tabMessages.some(m=>m.msg?.type==='WFM_PAGE_TOAST'&&m.msg?.kind==='ear'));
+ const holdRes=await new Promise(resolve=>handle({type:'WFM_TOOLS',action:'hold_start'},{},resolve));
+ assert.ok(holdRes.state.holdEndsAt>0);
+ // Outside shift tests (after shift ended at 17:30)
+ clock=Date.parse('2026-10-18T20:00:00Z');
+ tabMessages.length=0;
+ for(const fn of alarmListeners)fn({name:'wfm-tool:ear'});
+ await new Promise(r=>setTimeout(r,50));
+ assert.equal(tabMessages.length,0);
+ const offHold=await new Promise(resolve=>handle({type:'WFM_TOOLS',action:'hold_start'},{},resolve));
+ assert.equal(offHold.ok,false);
+ assert.equal(offHold.reason,'outside_shift');
+ report.checks.push('Personal alarms trigger alert ring x min before, ear change uses toast, and hold timer operates without notifications');
+ report.checks.push('Ear change and hold timer only disturb during active shift hours, never before, after or off');
  for(const check of report.checks)console.log('PASS '+check);
 }catch(e){report.failure=e.stack;console.error(e);process.exitCode=1;}
 finally{Date.now=originalNow;await writeFile('verification/background-report.json',JSON.stringify(report,null,2));}

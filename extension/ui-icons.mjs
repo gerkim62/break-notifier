@@ -16,6 +16,8 @@ const paths={
  close:'<path d="M18 6L6 18M6 6l12 12"/>',
  trash:'<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
  timer:'<circle cx="12" cy="14" r="8"/><path d="M12 9v5l3 3M9 2h6M12 2v4"/>',
+ plus:'<path d="M12 5v14M5 12h14"/>',
+ clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
 };
 export function icon(name,size=18,stroke=1.8){return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]??paths.flag}</svg>`;}
 

@@ -134,6 +134,27 @@ export function dayShiftBounds(day,settings=DEFAULT_SETTINGS){
   }
   return null;
 }
+export function currentShift(week,settings=DEFAULT_SETTINGS,now=Date.now()){
+ if(!week?.days)return null;
+ for(const day of week.days){
+  const bounds=dayShiftBounds(day,settings);
+  if(bounds&&bounds.start<=now&&now<bounds.end)return {day,bounds,start:bounds.start,end:bounds.end};
+ }
+ return null;
+}
+export function isDuringShift(week,settings=DEFAULT_SETTINGS,now=Date.now()){
+ return currentShift(week,settings,now)!==null;
+}
+export function nextShift(week,settings=DEFAULT_SETTINGS,now=Date.now()){
+ if(!week?.days)return null;
+ const upcoming=[];
+ for(const day of week.days){
+  const bounds=dayShiftBounds(day,settings);
+  if(bounds&&bounds.start>now)upcoming.push({day,bounds,start:bounds.start,end:bounds.end});
+ }
+ upcoming.sort((a,b)=>a.start-b.start);
+ return upcoming[0]??null;
+}
 export function contextForDay(weekOrDay,date,settings,now=Date.now()){
  const day=weekOrDay?.events?weekOrDay:dayForDate(weekOrDay,date);
  const segments=buildDaySegments(day,settings);
@@ -151,13 +172,28 @@ export function formatDuration(ms,{seconds=false}={}){
  return h?`${h} h${m?` ${m} min`:''}`:`${Math.max(1,Math.ceil(n/60))} min`;
 }
 export function segmentProgress(s,now){return s?Math.max(0,Math.min(1,(now-s.start)/(s.end-s.start))):0;}
-export function alertCandidates(week,settings,now=Date.now()){
- if(!week)return [];
+// Personal alarms (daily HH:MM wall times) use the same lead window as schedule events.
+export function userAlarmCandidates(userAlarms,settings,now=Date.now()){
+ const lead=Number(settings.leadMinutes)*60000,out=[];
+ if(!Array.isArray(userAlarms)||!userAlarms.length)return out;
+ const dates=[...new Set([localDate(now,settings.timeZone),localDate(now+lead+60000,settings.timeZone)])];
+ for(const alarm of userAlarms){
+  if(!alarm?.enabled||!/^\d{2}:\d{2}$/.test(alarm.time??''))continue;
+  for(const date of dates){
+   const at=wallTimeToEpoch(date,alarm.time,settings.timeZone);
+   if(at!==null&&at>now&&at-now<=lead){out.push({id:`${date}:alarm:${alarm.id}:${at}`,name:alarm.label||'Alarm',type:'alarm',at,remaining:at-now,lead});break;}
+  }
+ }
+ return out;
+}
+export function alertCandidates(week,settings,now=Date.now(),userAlarms=[]){
+ const personal=userAlarmCandidates(userAlarms,settings,now);
+ if(!week)return personal.sort((a,b)=>a.at-b.at);
  const date=localDate(now,settings.timeZone),day=dayForDate(week,date);
- if(!day||day.kind==='unknown'||day.kind==='day_off')return [];
+ if(!day||day.kind==='unknown'||day.kind==='day_off')return personal.sort((a,b)=>a.at-b.at);
  const segments=buildDaySegments(day,settings);
  const lead=Number(settings.leadMinutes)*60000;
- const candidates=[];
+ const candidates=[...personal];
  for(let i=0;i<segments.length;i++){
   const current=segments[i],before=segments[i-1];
   let enabled=false;
@@ -172,12 +208,12 @@ export function alertCandidates(week,settings,now=Date.now()){
  if(settings.alertShiftEnd&&last&&last.end>now&&last.end-now<=lead)candidates.push({id:`${date}:shift_end:${last.end}`,name:'Shift ends',type:'shift',at:last.end,remaining:last.end-now,lead});
  return candidates.sort((a,b)=>a.at-b.at);
 }
-export function selectedAlert(week,settings,{snoozes={},dismissed={}}={},now=Date.now()){
+export function selectedAlert(week,settings,{snoozes={},dismissed={},userAlarms=[]}={},now=Date.now()){
  // A snooze pauses the visual alert as a whole, not merely the matching
  // candidate. Otherwise a later eligible event can immediately replace the
  // snoozed one and leave the viewport glowing throughout the snooze.
  if(Object.values(snoozes).some(until=>Number.isFinite(until)&&until>now))return null;
- return alertCandidates(week,settings,now).find(e=>!dismissed[e.id])??null;
+ return alertCandidates(week,settings,now,userAlarms).find(e=>!dismissed[e.id])??null;
 }
 export function weekFingerprint(week){
  if(!week)return '';

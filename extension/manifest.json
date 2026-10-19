@@ -6,8 +6,7 @@
   "permissions": [
     "storage",
     "alarms",
-    "tabs",
-    "notifications"
+    "tabs"
   ],
   "host_permissions": [
     "http://svdt1ipccwfm09/*"

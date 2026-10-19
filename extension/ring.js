@@ -65,28 +65,47 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
 @media(prefers-reduced-motion:reduce){#queue-toast.visible{animation:none}}
 #sr{position:absolute;clip:rect(0,0,0,0);width:1px;height:1px;overflow:hidden}
 @media (prefers-reduced-motion:reduce){#edge{animation:none!important}}
-#hold-widget{position:fixed;z-index:10;pointer-events:auto;display:none;width:72px;height:72px;border-radius:50%;background:var(--sf);border:1.5px solid var(--ln);box-shadow:0 8px 24px rgba(0,0,0,.25);user-select:none;touch-action:none;cursor:grab;box-sizing:border-box;right:28px;bottom:84px}
-#hold-widget.visible{display:flex;align-items:center;justify-content:center}
-#hold-widget.dragging{cursor:grabbing;transition:none!important}
-#hold-widget .hold-svg{position:absolute;inset:0;width:72px;height:72px;pointer-events:none}
+#hold-widget{position:fixed;z-index:10;pointer-events:auto;display:none;width:68px;height:68px;right:28px;bottom:84px;user-select:none;-webkit-user-select:none;touch-action:none;font-family:Figtree,system-ui,sans-serif}
+#hold-widget.visible{display:block;animation:hold-in 180ms cubic-bezier(.25,.85,.3,1)}
+@keyframes hold-in{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+#hold-action{all:unset;box-sizing:border-box;position:absolute;inset:0;border-radius:50%;background:var(--sf);border:1px solid var(--ln);box-shadow:0 10px 28px rgba(15,27,46,.22),0 2px 6px rgba(15,27,46,.12);cursor:pointer;display:grid;place-items:center;transition:transform 150ms cubic-bezier(.25,.85,.3,1),box-shadow 200ms,background-color 200ms,border-color 200ms}
+#hold-action:hover{transform:scale(1.05)}
+#hold-action:active{transform:scale(.95)}
+#hold-action:focus-visible{outline:2px solid var(--ac);outline-offset:3px}
+#hold-widget.dragging #hold-action{cursor:grabbing;transform:scale(1.08);box-shadow:0 18px 40px rgba(15,27,46,.32),0 4px 10px rgba(15,27,46,.16);transition:none}
+#hold-widget .hold-svg{position:absolute;inset:4px;width:calc(100% - 8px);height:calc(100% - 8px);pointer-events:none;transform:rotate(-90deg)}
 #hold-widget .hold-track{stroke:var(--ln)}
-#hold-widget .hold-live{stroke:var(--ac);transition:stroke-dashoffset .2s linear,stroke .2s}
-#hold-widget .hold-core{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-#hold-widget .hold-time{font:700 12px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;color:var(--tx)}
-#hold-widget .hold-btn{width:24px;height:24px;border-radius:50%;border:0;background:var(--as);color:var(--ac);display:grid;place-items:center;cursor:pointer;padding:0;transition:background .15s,color .15s,transform .15s}
-#hold-widget .hold-btn:hover{background:var(--ac);color:var(--sf)}
-#hold-widget .hold-btn:active{transform:scale(.92)}
-#hold-widget .hold-btn svg{width:11px;height:11px;fill:currentColor}
-#hold-widget.overdue{border-color:#f43f5e;animation:hold-pulse 1s ease-in-out infinite}
+#hold-widget .hold-live{stroke:var(--ac);transition:stroke-dashoffset 200ms linear,stroke 300ms,opacity 200ms}
+#hold-widget .hold-core{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none}
+#hold-widget .hold-time{font:700 15px/1 'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--tx);letter-spacing:-.02em}
+#hold-widget .hold-hint{display:flex;align-items:center;gap:3px;font:800 8.5px/1 system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:var(--mu)}
+#hold-widget .hold-hint svg{width:7px;height:7px;fill:currentColor}
+#hold-widget.idle .hold-live{opacity:.4}
+#hold-widget.idle .hold-hint{color:var(--ac)}
+#hold-widget.running .hold-hint{color:var(--mu)}
+#hold-widget.warn .hold-live{stroke:#f59e0b}
+#hold-widget.warn .hold-time{color:#d97706}
+#hold-widget.overdue #hold-action{border-color:#f43f5e;background:color-mix(in srgb,#f43f5e 10%,var(--sf));animation:hold-pulse 1.1s ease-in-out infinite}
 #hold-widget.overdue .hold-live{stroke:#f43f5e}
-#hold-widget.overdue .hold-time{color:#f43f5e}
-#hold-widget.overdue .hold-btn{background:rgba(244,63,94,.18);color:#f43f5e}
-#hold-widget.overdue .hold-btn:hover{background:#f43f5e;color:white}
-@keyframes hold-pulse{0%,100%{box-shadow:0 0 0 0 rgba(244,63,94,.45),0 8px 24px rgba(0,0,0,.25)}50%{box-shadow:0 0 0 8px rgba(244,63,94,0),0 8px 24px rgba(0,0,0,.35)}}
-@media(prefers-reduced-motion:reduce){#hold-widget.overdue{animation:none}}
-</style><div class="glow" id="edge"></div><div aria-label="Snooze for" class="po" id="snooze-menu" role="menu"><div class="l">Snooze for</div><div class="g"><button class="op" data-min="1" title="Snooze 1 minute(s)"><b>1</b><span>min</span></button><button class="op" data-min="2" title="Snooze 2 minute(s)"><b>2</b><span>min</span></button><button class="op" data-min="5" disabled="" title="Snooze 5 minute(s)"><b>5</b><span>min</span></button><button class="op" data-min="10" disabled="" title="Snooze 10 minute(s)"><b>10</b><span>min</span></button></div><div class="n"><svg aria-hidden="true" fill="none" height="13" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" style="flex:none;margin-top:1px" viewBox="0 0 24 24" width="13"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h0"></path></svg><span>5 and 10 min are longer than the time left.</span></div></div><div aria-label="Break alert" class="pill" id="control" role="group"><i id="dot"></i><span id="label">Tea Break 2 in <b>2:10</b></span><span class="sp"></span><button class="sz" id="snooze-toggle" aria-expanded="false" aria-controls="snooze-menu">Snooze<svg aria-hidden="true" fill="none" height="12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="12"><path d="M6 15l6-6 6 6"></path></svg></button><button aria-label="Close island" title="Close island" class="xx" id="dismiss"><svg aria-hidden="true" fill="none" height="16" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="16"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div><div id="page-toast" role="status"></div><div id="queue-toast" role="status" aria-live="polite" aria-atomic="true"></div><div id="snooze-feedback" role="status" aria-live="polite" aria-atomic="true"></div><span id="sr" aria-live="polite"></span><div id="hold-widget" role="region" aria-label="Hold timer"><svg class="hold-svg" viewBox="0 0 36 36" aria-hidden="true"><circle class="hold-track" cx="18" cy="18" r="15" fill="none" stroke-width="2.5"></circle><circle class="hold-live" cx="18" cy="18" r="15" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="94.25 94.25" stroke-dashoffset="0" transform="rotate(-90 18 18)"></circle></svg><div class="hold-core"><span class="hold-time" id="hold-time">1:00</span><button type="button" class="hold-btn" id="hold-action" aria-label="Start hold timer"><svg viewBox="0 0 24 24"><polygon points="7,5 19,12 7,19"></polygon></svg></button></div></div>`
+#hold-widget.overdue .hold-time,#hold-widget.overdue .hold-hint{color:#f43f5e}
+@keyframes hold-pulse{0%,100%{box-shadow:0 0 0 0 rgba(244,63,94,.45),0 10px 28px rgba(15,27,46,.22)}50%{box-shadow:0 0 0 9px rgba(244,63,94,0),0 10px 28px rgba(15,27,46,.3)}}
+#hold-widget .hold-close{all:unset;box-sizing:border-box;position:absolute;top:-3px;right:-3px;width:20px;height:20px;border-radius:50%;background:var(--sf);border:1px solid var(--ln);color:var(--mu);display:grid;place-items:center;cursor:pointer;opacity:0;transform:scale(.6);box-shadow:0 2px 6px rgba(15,27,46,.18);transition:opacity 140ms,transform 160ms cubic-bezier(.25,.85,.3,1),color 140ms,background-color 140ms}
+#hold-widget .hold-close svg{width:10px;height:10px}
+#hold-widget:hover .hold-close,#hold-widget .hold-close:focus-visible{opacity:1;transform:scale(1)}
+#hold-widget.dragging .hold-close{opacity:0}
+#hold-widget .hold-close:hover{color:var(--tx);background:var(--bg)}
+@media(prefers-reduced-motion:reduce){#hold-widget.visible,#hold-widget.overdue #hold-action{animation:none}#hold-action,#hold-widget .hold-live{transition:none}}
+#tool-toast{position:fixed;z-index:7;left:50%;top:calc(18px + env(safe-area-inset-top, 0px));transform:translateX(-50%);display:none;align-items:center;gap:10px;max-width:calc(100vw - 32px);padding:8px 8px 8px 12px;border-radius:999px;background:var(--sf);color:var(--tx);border:1px solid var(--ln);box-shadow:0 12px 32px rgba(15,27,46,.22);font:600 13.5px/1.3 Figtree,system-ui,sans-serif;pointer-events:auto}
+#tool-toast.visible{display:flex;animation:tool-toast-in 220ms cubic-bezier(.25,.85,.3,1)}
+#tool-toast .tt-ico{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:color-mix(in srgb,#8b5cf6 16%,transparent);color:#8b5cf6;flex:none}
+#tool-toast .tt-ico svg{width:15px;height:15px}
+#tool-toast .tt-x{all:unset;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:var(--mu);cursor:pointer}
+#tool-toast .tt-x:hover{background:var(--bg);color:var(--tx)}
+@keyframes tool-toast-in{from{opacity:0;transform:translate(-50%,-8px) scale(.97)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+@media(prefers-reduced-motion:reduce){#tool-toast.visible{animation:none}}
+</style><div class="glow" id="edge"></div><div aria-label="Snooze for" class="po" id="snooze-menu" role="menu"><div class="l">Snooze for</div><div class="g"><button class="op" data-min="1" title="Snooze 1 minute(s)"><b>1</b><span>min</span></button><button class="op" data-min="2" title="Snooze 2 minute(s)"><b>2</b><span>min</span></button><button class="op" data-min="5" disabled="" title="Snooze 5 minute(s)"><b>5</b><span>min</span></button><button class="op" data-min="10" disabled="" title="Snooze 10 minute(s)"><b>10</b><span>min</span></button></div><div class="n"><svg aria-hidden="true" fill="none" height="13" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" style="flex:none;margin-top:1px" viewBox="0 0 24 24" width="13"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h0"></path></svg><span>5 and 10 min are longer than the time left.</span></div></div><div aria-label="Break alert" class="pill" id="control" role="group"><i id="dot"></i><span id="label">Tea Break 2 in <b>2:10</b></span><span class="sp"></span><button class="sz" id="snooze-toggle" aria-expanded="false" aria-controls="snooze-menu">Snooze<svg aria-hidden="true" fill="none" height="12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="12"><path d="M6 15l6-6 6 6"></path></svg></button><button aria-label="Close island" title="Close island" class="xx" id="dismiss"><svg aria-hidden="true" fill="none" height="16" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="16"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div><div id="page-toast" role="status"></div><div id="queue-toast" role="status" aria-live="polite" aria-atomic="true"></div><div id="snooze-feedback" role="status" aria-live="polite" aria-atomic="true"></div><span id="sr" aria-live="polite"></span><div id="hold-widget" role="group" aria-label="Hold timer"><button type="button" id="hold-action" aria-label="Start 1 minute hold timer"><svg class="hold-svg" viewBox="0 0 36 36" aria-hidden="true"><circle class="hold-track" cx="18" cy="18" r="16" fill="none" stroke-width="2.5"></circle><circle class="hold-live" cx="18" cy="18" r="16" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="100.53 100.53" stroke-dashoffset="0"></circle></svg><span class="hold-core"><span class="hold-time" id="hold-time">1:00</span><span class="hold-hint" id="hold-hint"></span></span></button><button type="button" class="hold-close" id="hold-close" aria-label="Hide hold timer" title="Hide hold timer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div><div id="tool-toast" role="status" aria-live="polite"><span class="tt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"></path><rect x="3" y="14" width="4" height="6" rx="1.5"></rect><rect x="17" y="14" width="4" height="6" rx="1.5"></rect></svg></span><span class="tt-text" id="tool-toast-text"></span><button type="button" class="tt-x" id="tool-toast-close" aria-label="Dismiss"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>`
  document.documentElement.appendChild(host);
- const edge=shadow.querySelector('#edge'),menu=shadow.querySelector('#snooze-menu'),pill=shadow.querySelector('#control'),label=shadow.querySelector('#label'),dot=shadow.querySelector('#dot'),sr=shadow.querySelector('#sr'),pageToast=shadow.querySelector('#page-toast'),queueToast=shadow.querySelector('#queue-toast'),snoozeFeedback=shadow.querySelector('#snooze-feedback'),holdWidget=shadow.querySelector('#hold-widget'),holdTime=shadow.querySelector('#hold-time'),holdBtn=shadow.querySelector('#hold-action'),holdArc=shadow.querySelector('.hold-live');
+ const edge=shadow.querySelector('#edge'),menu=shadow.querySelector('#snooze-menu'),pill=shadow.querySelector('#control'),label=shadow.querySelector('#label'),dot=shadow.querySelector('#dot'),sr=shadow.querySelector('#sr'),pageToast=shadow.querySelector('#page-toast'),queueToast=shadow.querySelector('#queue-toast'),snoozeFeedback=shadow.querySelector('#snooze-feedback'),holdWidget=shadow.querySelector('#hold-widget'),holdTime=shadow.querySelector('#hold-time'),holdHint=shadow.querySelector('#hold-hint'),holdBtn=shadow.querySelector('#hold-action'),holdClose=shadow.querySelector('#hold-close'),holdArc=shadow.querySelector('.hold-live'),toolToast=shadow.querySelector('#tool-toast'),toolToastText=shadow.querySelector('#tool-toast-text');
  const request=message=>new Promise(resolve=>chrome.runtime.sendMessage(message,result=>{if(chrome.runtime.lastError)resolve(null);else resolve(result);}));
  let forceCompactAlertId=null, compactUntilPointerLeaves=false, snoozePending=false, snoozeErrorUntil=0;
  let snoozeFeedbackTimer=null;
@@ -152,21 +171,25 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
   breathPhaseValue=(breathPhaseValue+delta*2*Math.PI/(1000*period))%(Math.PI*2);
   return breathPhaseValue;
  }
- const CIRCUMFERENCE = 94.25;
+ const CIRCUMFERENCE = 100.53;
  let isHoldDragging=false, holdDragStartX=0, holdDragStartY=0, holdWidgetStartX=0, holdWidgetStartY=0, holdHasDragged=false;
  holdWidget.addEventListener('pointerdown',e=>{
-  if(e.target.closest('#hold-action'))return;
-  isHoldDragging=true;holdHasDragged=false;
+  if(e.target.closest('#hold-close'))return;
+  holdHasDragged=false;
   holdDragStartX=e.clientX;holdDragStartY=e.clientY;
   const rect=holdWidget.getBoundingClientRect();
   holdWidgetStartX=rect.left;holdWidgetStartY=rect.top;
-  try{holdWidget.setPointerCapture(e.pointerId);}catch{}
-  holdWidget.classList.add('dragging');
  });
  holdWidget.addEventListener('pointermove',e=>{
-  if(!isHoldDragging)return;
+  if(e.buttons===0){if(isHoldDragging)finishHoldDrag(e);return;}
   const dx=e.clientX-holdDragStartX, dy=e.clientY-holdDragStartY;
-  if(Math.abs(dx)>3||Math.abs(dy)>3)holdHasDragged=true;
+  if(!holdHasDragged&&Math.hypot(dx,dy)>4){
+   holdHasDragged=true;
+   isHoldDragging=true;
+   try{holdWidget.setPointerCapture(e.pointerId);}catch{}
+   holdWidget.classList.add('dragging');
+  }
+  if(!isHoldDragging)return;
   const maxX=Math.max(10,window.innerWidth-holdWidget.offsetWidth-10);
   const maxY=Math.max(10,window.innerHeight-holdWidget.offsetHeight-10);
   const newX=Math.max(10,Math.min(maxX,holdWidgetStartX+dx));
@@ -184,20 +207,50 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
   if(holdHasDragged){
    const rect=holdWidget.getBoundingClientRect();
    await request({type:'WFM_TOOLS',action:'hold_position',position:{x:Math.round(rect.left),y:Math.round(rect.top)}});
+   setTimeout(()=>{holdHasDragged=false;},60);
   }
  };
  holdWidget.addEventListener('pointerup',finishHoldDrag);
  holdWidget.addEventListener('pointercancel',finishHoldDrag);
 
  holdBtn.addEventListener('click',async()=>{
+  if(holdHasDragged){holdHasDragged=false;return;}
   const running=Boolean(state?.holdEndsAt);
   await request({type:'WFM_TOOLS',action:running?'hold_stop':'hold_start'});
   await reload();
  });
 
- function paintHoldWidget(now){
+ if(holdClose){
+  holdClose.addEventListener('click',async e=>{
+   e.stopPropagation();
+   await request({type:'WFM_TOOLS',action:'toggle_hold_timer',enabled:false});
+   await reload();
+  });
+ }
+
+ let toolToastTimer=null;
+ function showToolToast(text,duration=6000){
+  clearTimeout(toolToastTimer);
+  if(toolToastText)toolToastText.textContent=text;
+  if(!toolToast)return;
+  toolToast.classList.remove('visible');
+  void toolToast.offsetWidth;
+  toolToast.classList.add('visible');
+  toolToastTimer=setTimeout(()=>{toolToast.classList.remove('visible');if(toolToastText)toolToastText.textContent='';},duration);
+ }
+ const toolToastClose=shadow.querySelector('#tool-toast-close');
+ if(toolToastClose){
+  toolToastClose.addEventListener('click',()=>{
+   clearTimeout(toolToastTimer);
+   if(toolToast)toolToast.classList.remove('visible');
+   if(toolToastText)toolToastText.textContent='';
+  });
+ }
+
+ function paintHoldWidget(now, settings){
   const timer=state?.holdTimer;
-  if(!timer?.enabled){
+  const inShift=core.isDuringShift(state?.week, settings, now);
+  if(!timer?.enabled || !inShift){
    holdWidget.classList.remove('visible');
    return;
   }
@@ -214,44 +267,45 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
   }
   const ends=state?.holdEndsAt;
   if(!ends){
-   holdWidget.classList.remove('overdue');
+   holdWidget.className='visible idle';
+   if(isHoldDragging)holdWidget.classList.add('dragging');
    holdTime.textContent='1:00';
+   if(holdHint)holdHint.innerHTML='<svg viewBox="0 0 24 24"><polygon points="6,4 20,12 6,20"></polygon></svg><span>Start</span>';
    holdArc.setAttribute('stroke-dashoffset','0');
-   holdArc.style.opacity='0.35';
-   holdBtn.setAttribute('aria-label','Start hold timer');
-   holdBtn.innerHTML='<svg viewBox="0 0 24 24"><polygon points="7,5 19,12 7,19"></polygon></svg>';
+   holdBtn.setAttribute('aria-label','Start 1 minute hold timer');
    return;
   }
-  holdArc.style.opacity='1';
   if(now<ends){
-   holdWidget.classList.remove('overdue');
    const remaining=ends-now;
    const seconds=Math.ceil(remaining/1000);
    const m=Math.floor(seconds/60),s=seconds%60;
+   holdWidget.className='visible running'+(seconds<=15?' warn':'');
+   if(isHoldDragging)holdWidget.classList.add('dragging');
    holdTime.textContent=`${m}:${String(s).padStart(2,'0')}`;
+   if(holdHint)holdHint.innerHTML='<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg><span>Stop</span>';
    const p=Math.max(0,Math.min(1,remaining/60000));
    const offset=(1-p)*CIRCUMFERENCE;
    holdArc.setAttribute('stroke-dashoffset',String(offset));
-   holdBtn.setAttribute('aria-label','Stop hold timer');
-   holdBtn.innerHTML='<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+   holdBtn.setAttribute('aria-label',`Stop hold timer (${seconds} seconds left)`);
   }else{
-   holdWidget.classList.add('overdue');
    const overdue=Math.floor((now-ends)/1000);
    const m=Math.floor(overdue/60),s=overdue%60;
+   holdWidget.className='visible overdue';
+   if(isHoldDragging)holdWidget.classList.add('dragging');
    holdTime.textContent=`-${m}:${String(s).padStart(2,'0')}`;
+   if(holdHint)holdHint.innerHTML='<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"></rect></svg><span>Stop</span>';
    holdArc.setAttribute('stroke-dashoffset',String(CIRCUMFERENCE));
-   holdBtn.setAttribute('aria-label','Stop hold timer');
-   holdBtn.innerHTML='<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+   holdBtn.setAttribute('aria-label',`Stop hold timer (${overdue} seconds overdue)`);
   }
  }
  function hide(){edge.classList.remove('visible');pill.classList.remove('visible');menu.classList.remove('visible');pageToast.classList.remove('visible');}
  function paint(){
   const now=Date.now();const settings=core.settingsWithDefaults(state?.settings);
   setOverlayTheme(settings.theme);
-  paintHoldWidget(now);
+  paintHoldWidget(now, settings);
   evaluateQueueChange(now,settings);
-  if(!state?.week||!settings.showRing){hide();lastAlert=null;return;}
-  if(now-cachedAlertAt>=1000||cachedAlertAt===0){cachedAlert=core.selectedAlert(state.week,settings,state,now);cachedAlertAt=now;}
+  if(!settings.showRing){hide();lastAlert=null;return;}
+  if(now-cachedAlertAt>=1000||cachedAlertAt===0){cachedAlert=core.selectedAlert(state?.week,settings,state,now);cachedAlertAt=now;}
   const alert=cachedAlert?{...cachedAlert,remaining:cachedAlert.at-now}:null;
   if(!alert||alert.remaining<=0){
    pill.classList.remove('visible');menu.classList.remove('visible');pageToast.classList.remove('visible');
@@ -412,7 +466,10 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
   options[next].focus();
  });
  window.addEventListener('resize',()=>{pill.style.removeProperty('--pill-width');paint();});
- chrome.runtime.onMessage.addListener(message=>{if(message?.type==='WFM_COMPANION_CHANGED')reload();});
+ chrome.runtime.onMessage.addListener(message=>{
+  if(message?.type==='WFM_COMPANION_CHANGED')reload();
+  if(message?.type==='WFM_PAGE_TOAST')showToolToast(message.text||'Reminder');
+ });
  chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.wfm_companion_state_v1){state=changes.wfm_companion_state_v1.newValue;cachedAlertAt=0;queueEventsDate='';paint();}});
  await reload();
  // The page timer only draws CSS; the service worker handles network and persisted snoozes.
