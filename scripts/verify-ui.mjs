@@ -48,7 +48,7 @@ try{
   await page.clock.setFixedTime(new Date('2026-10-18T11:00:00Z'));await page.waitForFunction(()=>document.querySelector('#shared-countdown .ct b')?.textContent==='40:00');
   assert.equal(await page.locator('#shared-countdown .live-stroke').getAttribute('opacity'),'0');
   assert.equal(await page.locator('.hd .lg .live-stroke').getAttribute('opacity'),'0');
-  await page.clock.setFixedTime(new Date('2026-10-18T07:00:00Z'));await page.waitForFunction(()=>document.querySelector('#shared-countdown').hidden);
+  await page.clock.setFixedTime(new Date('2026-10-18T16:00:00Z'));await page.waitForFunction(()=>document.querySelector('#shared-countdown').hidden);
   assert.equal(await page.locator('.hero .ring').evaluate(e=>getComputedStyle(e).visibility),'visible');
   assert.equal(await page.locator('.hd .lg').evaluate(e=>e.classList.contains('idle-header-ring')),true);
   await page.screenshot({path:'verification/rings-idle.png',animations:'disabled'});
@@ -125,7 +125,7 @@ try{
  await check('Original day-off illustration and event filtering still work',async()=>{
   await page.click('[data-date="2026-10-17"]');assert.equal(await page.locator('.dc').count(),1);assert.equal(await page.locator('.ev').count(),0);
   await page.click('#today');await page.locator('.seg button').nth(1).click();assert.equal(await page.locator('.empty-hint').textContent(),'No schedule detected.');
-  await page.locator('.seg button').nth(2).click();assert.ok(await page.locator('.ev').count()>3);
+  await page.locator('.seg button').nth(2).click();assert.equal(await page.locator('.alarms-panel').count(),1);
   await page.locator('.seg button').first().click();
  });
  await page.clock.setFixedTime(new Date('2026-10-18T11:10:00Z'));await page.waitForSelector('.ev.live');
@@ -151,7 +151,7 @@ try{
  await check('Manual refresh loads the selected week and retains the cached schedule on failure',async()=>{
   await page.click('#back');await page.click('#next');await page.evaluate(()=>window.__scheduleError='network_error');await page.locator('.hd .btn').click();await page.waitForFunction(()=>window.__messages.some(m=>m.type==='WFM_REFRESH'&&m.trigger==='manual'));
   assert.equal(await page.evaluate(()=>window.__messages.findLast(m=>m.type==='WFM_REFRESH'&&m.trigger==='manual').date),'2026-10-19');
-  await page.waitForFunction(()=>document.querySelector('.hd .btn')?.textContent.includes('Refresh')&&!document.querySelector('.hd .btn').disabled);await page.click('#today');assert.equal(await page.locator('.ev').count(),3);
+  await page.waitForFunction(()=>document.querySelector('.hd .btn')?.textContent.includes('Refresh')&&!document.querySelector('.hd .btn').disabled);await page.click('#today');assert.equal(await page.locator('.ev').count(),5);
  });
  await check('Light mode renders a light schedule surface',async()=>{
   const light=await env.browser.newPage({viewport:{width:380,height:600},colorScheme:'light'});await init(light);await light.goto(env.base+'/extension/popup.html');await light.waitForSelector('.ev');
@@ -164,7 +164,7 @@ try{
   const names=['02. HVC1_Stats','03. U LVC Stats','07. Safaricom Dealer','05. Lipa Na Mpesa Dealer'];
   day.events.push(...Array.from({length:38},(_,i)=>({source:'SchCoverage',activityId:i+100,name:names[i%names.length],startDate:date,endDate:date,start:time(480+i*15),end:time(495+i*15)})));
   const dense=await env.browser.newPage({viewport:{width:380,height:600},colorScheme:'dark'});dense.on('pageerror',e=>report.errors.push(e.message));await init(dense,state);
-  await dense.goto(env.base+'/extension/popup.html');await dense.waitForSelector('.ev');await dense.click('[data-date="2026-10-15"]');await dense.locator('.seg button').nth(2).click();await dense.waitForTimeout(600);
+  await dense.goto(env.base+'/extension/popup.html');await dense.waitForSelector('.ev');await dense.click('[data-date="2026-10-15"]');await dense.locator('.seg button').nth(1).click();await dense.waitForTimeout(600);
   assert.ok(await dense.locator('.ev').count()>30);await dense.screenshot({path:'verification/long-schedule-top.png',animations:'disabled'});
   await dense.mouse.move(250,350);await dense.mouse.wheel(0,320);await dense.waitForFunction(()=>document.querySelector('.schedule-scroll').scrollTop>250);
   assert.ok((await dense.locator('.hd').boundingBox()).y<0);assert.ok((await dense.locator('.week-picker').boundingBox()).y<0);

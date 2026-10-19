@@ -21,7 +21,7 @@ let loginInProgress=null;
 let diagQueue=Promise.resolve();
 let stateQueue=Promise.resolve();
 const savedRuns=[];
-const EMPTY={settings:{...DEFAULT_SETTINGS},week:null,weeks:{},weekUpdated:{},lastUpdated:null,lastError:null,domChange:null,toast:null,snoozes:{},dismissed:{},bannerHiddenFingerprint:null};
+const EMPTY={settings:{...DEFAULT_SETTINGS},week:null,weeks:{},weekUpdated:{},lastUpdated:null,lastError:null,domChange:null,toast:null,snoozes:{},dismissed:{},bannerHiddenFingerprint:null,userAlarms:[],earChange:{enabled:false,intervalMin:60,nextAt:null},holdEndsAt:null,holdTimer:{enabled:false,position:null}};
 let stateLoaded=null;
 const scrubCode=e=>e instanceof Error?e.name:'UnknownError';
 async function getState(){
@@ -199,6 +199,15 @@ async function openWfmTab({login=false}={}){
   if(tabs.length){
    const existing=tabs[0];
    await chrome.tabs.update(existing.id,{active:true});
+   if(login){
+    if(existing.url?.startsWith('http://svdt1ipccwfm09:8070/wfm/login')){
+     try{if(typeof chrome.tabs?.reload==='function')await chrome.tabs.reload(existing.id);}catch{}
+    }else{
+     await chrome.tabs.update(existing.id,{url:'http://svdt1ipccwfm09:8070/wfm/login'});
+    }
+   }else{
+    try{if(typeof chrome.tabs?.reload==='function')await chrome.tabs.reload(existing.id);}catch{}
+   }
    if(typeof existing.windowId==='number')await chrome.windows.update(existing.windowId,{focused:true});
    await logUI('wfm_tab_reused',{trigger:login?'login':'open'});
    return {ok:true,action:'reused',tabId:existing.id};
@@ -239,7 +248,8 @@ async function handleMessage(message,sender){
   const settings=settingsWithDefaults({...old.settings,...safe});
   await patchState({settings});await logUI('settings_changed');await updateBadge();await broadcast();return {ok:true,state:await getState()};
  }
- if(type==='WFM_SNOOZE'||type==='WFM_DISMISS'){
+ if(type==='WFM_TOOLS')return updateTools(message);
+  if(type==='WFM_SNOOZE'||type==='WFM_DISMISS'){
   const s=await getState();const alert=selectedAlert(s.week,s.settings,s,Date.now());
   if(!alert||message.id!==alert.id)return {ok:false,reason:'alert_no_longer_active'};
   if(type==='WFM_SNOOZE'){
@@ -278,6 +288,80 @@ chrome.runtime.onMessage.addListener((message,_sender,sendResponse)=>{
   sendResponse({ok:false,reason:'runtime_error',message:'Companion request failed'});
  });return true;
 });
+// ---- Personal alarms, ear-change reminders and hold timer ----
+const TOOL_PREFIX='wfm-tool:';
+const HOLD_MS=60000,MAX_ALARMS=10,EAR_INTERVALS=[30,45,60];
+const TIME_RE=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
+function nextAlarmTime(time,zone,now=Date.now()){
+  const today=localDate(now,zone);
+  let at=wallTimeToEpoch(today,time,zone);
+  if(at===null||at<=now){const d=new Date(`${today}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+1);at=wallTimeToEpoch(d.toISOString().slice(0,10),time,zone);}
+  return at;
+}
+async function notify(id,title,message){
+  try{await chrome.notifications.create(`${id}:${Date.now()}`,{type:'basic',iconUrl:'icon-128.png',title,message,priority:2,requireInteraction:true});}catch{}
+}
+async function syncToolAlarms(){
+  try{
+   const state=await getState(),now=Date.now();
+   for(const a of await chrome.alarms.getAll())if(a.name.startsWith(TOOL_PREFIX))await chrome.alarms.clear(a.name);
+   for(const alarm of state.userAlarms??[])if(alarm.enabled){const when=nextAlarmTime(alarm.time,state.settings.timeZone,now);if(when)await chrome.alarms.create(`${TOOL_PREFIX}user:${alarm.id}`,{when});}
+   const ear=state.earChange;
+   if(ear?.enabled&&ear.nextAt)await chrome.alarms.create(`${TOOL_PREFIX}ear`,{when:Math.max(ear.nextAt,now+1000)});
+   if(state.holdEndsAt&&state.holdEndsAt>now)await chrome.alarms.create(`${TOOL_PREFIX}hold`,{when:state.holdEndsAt});
+  }catch{}
+}
+async function updateTools(message){
+  const s=await getState(),now=Date.now();
+  const action=message.action;
+  if(action==='add_alarm'){
+   const time=String(message.time??''),label=String(message.label??'').trim().slice(0,40);
+   if(!TIME_RE.test(time))return {ok:false,reason:'invalid_time'};
+   if((s.userAlarms??[]).length>=MAX_ALARMS)return {ok:false,reason:'too_many_alarms'};
+   const alarm={id:`${now.toString(36)}${Math.random().toString(36).slice(2,6)}`,time,label:label||'Alarm',enabled:true};
+   await patchState({userAlarms:[...(s.userAlarms??[]),alarm].sort((a,b)=>a.time.localeCompare(b.time))});
+  }else if(action==='toggle_alarm'){
+   await patchState({userAlarms:(s.userAlarms??[]).map(a=>a.id===message.id?{...a,enabled:Boolean(message.enabled)}:a)});
+  }else if(action==='delete_alarm'){
+   await patchState({userAlarms:(s.userAlarms??[]).filter(a=>a.id!==message.id)});
+  }else if(action==='ear_change'){
+   const old=s.earChange??{enabled:false,intervalMin:60,nextAt:null};
+   const intervalMin=EAR_INTERVALS.includes(Number(message.intervalMin))?Number(message.intervalMin):old.intervalMin;
+   const enabled=message.enabled===undefined?old.enabled:Boolean(message.enabled);
+   // Restart the countdown whenever it is switched on or its interval changes.
+   const restart=enabled&&(!old.enabled||intervalMin!==old.intervalMin||!old.nextAt);
+   await patchState({earChange:{enabled,intervalMin,nextAt:enabled?(restart?now+intervalMin*60000:old.nextAt):null}});
+  }else if(action==='toggle_hold_timer'){
+   const current=s.holdTimer??{enabled:false,position:null};
+   const enabled=message.enabled===undefined?!current.enabled:Boolean(message.enabled);
+   await patchState({holdTimer:{...current,enabled}});
+  }else if(action==='hold_position'){
+   const current=s.holdTimer??{enabled:false,position:null};
+   await patchState({holdTimer:{...current,position:message.position}});
+  }else if(action==='hold_start'){
+   await patchState({holdEndsAt:now+HOLD_MS});
+  }else if(action==='hold_stop'||action==='hold_cancel'){
+   await patchState({holdEndsAt:null});
+  }else return {ok:false,reason:'unknown_action'};
+  await syncToolAlarms();
+  await broadcast();
+  return {ok:true,state:await getState()};
+}
+async function onToolAlarm(name){
+  const s=await getState(),now=Date.now(),key=name.slice(TOOL_PREFIX.length);
+  if(key==='hold'){
+   if(!s.holdEndsAt)return;
+   await notify('hold','Hold timer reached 1 minute','1 minute is up. Check back with the caller.');
+  }else if(key==='ear'){
+   const ear=s.earChange;if(!ear?.enabled)return;
+   await patchState({earChange:{...ear,nextAt:now+ear.intervalMin*60000}});
+   await notify('ear','Change ears','Switch your headset to the other ear.');
+  }else if(key.startsWith('user:')){
+   const alarm=(s.userAlarms??[]).find(a=>a.id===key.slice(5));
+   if(alarm?.enabled)await notify(`user-${alarm.id}`,alarm.label,`Alarm for ${alarm.time}`);
+  }
+  await syncToolAlarms();
+}
 async function ensureAlarms(){
  try{
   // Chrome retains old alarms across extension upgrades. Stop obsolete polling.
@@ -286,7 +370,8 @@ async function ensureAlarms(){
  }catch{}
  await updateBadge();
 }
-chrome.runtime.onInstalled.addListener(()=>{ensureAlarms();});
+chrome.runtime.onInstalled.addListener(()=>{ensureAlarms();syncToolAlarms();});
 chrome.runtime.onStartup.addListener(()=>{ensureAlarms();});
-chrome.alarms.onAlarm.addListener(a=>{if(a.name===BADGE_ALARM)updateBadge();});
+chrome.alarms.onAlarm.addListener(a=>{if(a.name===BADGE_ALARM)updateBadge();else if(a.name.startsWith(TOOL_PREFIX))onToolAlarm(a.name);});
+syncToolAlarms();
 ensureAlarms();

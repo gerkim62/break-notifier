@@ -1,4 +1,4 @@
-import {buildDaySegments} from './companion-core.mjs';
+import {buildDaySegments,dayShiftBounds} from './companion-core.mjs';
 import {icon} from './ui-icons.mjs';
 
 const make=(tag,cls='',text)=>{const el=document.createElement(tag);el.className=cls;if(text!==undefined)el.textContent=text;return el;};
@@ -58,7 +58,7 @@ function reconcile(target,next){
 export function journey(container,{day,settings,filter,isToday,isPast,now=Date.now()}){
  container.classList.add('journey');
  let timeline=container.querySelector('.timeline');if(!timeline){container.replaceChildren();timeline=make('div','timeline');container.append(timeline);}
- const all=buildDaySegments(day,settings),events=filter==='special'?all.filter(special):filter==='queues'?all.filter(s=>s.type==='queue'):all;
+ const all=buildDaySegments(day,settings);let events=filter==='special'?all.filter(special):filter==='queues'?all.filter(s=>s.type==='queue'):all;if(filter==='special'){const bounds=dayShiftBounds(day,settings);if(bounds)events=[{id:'shift_start',type:'milestone',milestone:'start',name:'Shift start',start:bounds.start,end:bounds.start},...events.filter(s=>s.start>=bounds.start&&s.end<=bounds.end),{id:'shift_end',type:'milestone',milestone:'end',name:'Shift end',start:bounds.end,end:bounds.end}];}
  const stamp=t=>new Intl.DateTimeFormat('en-US',{timeZone:settings.timeZone,hour:'numeric',minute:'2-digit'}).format(t);
  const next=make('div');
  events.forEach((s,i)=>{
@@ -71,12 +71,12 @@ export function journey(container,{day,settings,filter,isToday,isPast,now=Date.n
    row.querySelector('.gtext').textContent=inGap?duration(ge-now)+' until '+s.name:duration(ge-gs)+' between activities';next.append(row);
   }
   const meal=s.stateType===5||/lunch|meal/i.test(s.name);
-  const [color,rgb,symbol,text]=s.type==='break'?(meal?['coral','255,155,122','meal','Meal']:['amber','246,189,75','cup','Break']):s.type==='exception'?['violet','182,156,255','people','Event']:s.type==='queue'?['sky','108,196,240','queue','Queue']:['green','91,214,164','flag',s.type==='time_off'?'Time off':'Work'];
+  const [color,rgb,symbol,text]=s.type==='milestone'?['green','91,214,164','flag','Shift']:s.type==='break'?(meal?['coral','255,155,122','meal','Meal']:['amber','246,189,75','cup','Break']):s.type==='exception'?['violet','182,156,255','people','Event']:s.type==='queue'?['sky','108,196,240','queue','Queue']:['green','91,214,164','flag',s.type==='time_off'?'Time off':'Work'];
   const row=make('div','row ev '+(done?'done':live?'live':'next'));row.dataset.eventId=s.id;row.style.cssText=`--c:var(--${color});--tint:rgba(${rgb},.14);--glow:rgba(${rgb},.45)`;
   row.innerHTML=`<div class="time"><b></b><small></small></div><div class="rail"><div class="dot">${done?icon('check',8,4):''}</div>${i<events.length-1?`<div class="tail"><b class="fill" style="height:${p*100}%"></b></div>`:''}</div><div class="card"><div class="tile">${icon(symbol)}</div><div class="t"><div class="name"></div><div class="meta"></div></div><div class="chip"></div>${live?`<div class="bar"><b style="width:${p*100}%"></b></div>`:''}</div>`;
   const parts=stamp(s.start).split(' ');row.querySelector('.time b').textContent=parts[0];row.querySelector('.time small').textContent=parts[1];
-  row.querySelector('.name').textContent=s.name;row.querySelector('.meta').textContent=done?text+' · done':live?'Ends '+stamp(s.end):text+' · ends '+stamp(s.end);
-  row.querySelector('.chip').textContent=live?duration(s.end-now)+' left':duration(s.end-s.start);next.append(row);
+  const ms=s.type==='milestone',startMs=s.milestone==='start';row.querySelector('.name').textContent=s.name;row.querySelector('.meta').textContent=ms?(done?(startMs?'Started ':'Ended '):(startMs?'Starts ':'Ends '))+stamp(s.start):done?text+' · done':live?'Ends '+stamp(s.end):text+' · ends '+stamp(s.end);
+  row.querySelector('.chip').textContent=ms?(isToday&&!done?'in '+duration(s.start-now):startMs?'Start':'End'):live?duration(s.end-now)+' left':duration(s.end-s.start);next.append(row);
  });
  if(events.length){const breaks=events.filter(s=>s.type==='break');next.append(make('div','total',filter==='special'?`${breaks.length} breaks · ${Math.round(breaks.reduce((n,s)=>n+s.end-s.start,0)/60000)} min total${isToday?' today':''}`:`${events.length} ${filter==='queues'?'queue activities':'activities'} · ${duration(events.reduce((n,s)=>n+s.end-s.start,0))} total`));}
  else next.append(make('div','empty-hint','No schedule detected.'));

@@ -1,6 +1,6 @@
 // Pure, browser-safe UI projection. Native reader JSON is never modified.
 export const DEFAULT_SETTINGS = Object.freeze({
-  autoRefresh: false, leadMinutes: 5, alertBreaks: true, alertExceptions: true, alertShiftEnd: true,
+  autoRefresh: false, leadMinutes: 5, alertBreaks: true, alertExceptions: true, alertShiftStart: true, alertShiftEnd: true,
   alertQueues: false, queueSwitchToast: true, showRing: true, reducedMotion: 'system',
   timeZone: 'Africa/Nairobi', showQueuePrefixes: true, theme: 'system',
 });
@@ -89,8 +89,8 @@ function priority(e){
 const stableId=e=>`${e.source}:${e.stateType??'x'}:${e.stateId??e.activityId??'x'}:${e.name??''}`;
 export function buildDaySegments(day,settings=DEFAULT_SETTINGS,report=()=>{}){
  if(!day||day.kind==='unknown'||day.kind==='day_off')return [];
- const shiftEvent=(day.events??[]).find(e=>e.source==='SchAgentDay');
- const shift=shiftEvent&&eventBounds(shiftEvent,settings.timeZone);
+ const shift=dayShiftBounds(day,settings);
+ const shiftEvent=(day.events??[]).find(e=>e.source==='SchAgentDay'||e.kind==='shift')??(shift?{source:'SchAgentDay',start:day.shift?.start,end:day.shift?.end,startDate:day.date,endDate:day.date}:null);
  if(!shift){
   report('display_shift_unavailable',{date:day.date});
   // Do not suppress valid WFM records solely because the day's native shift
@@ -124,13 +124,22 @@ export function buildDaySegments(day,settings=DEFAULT_SETTINGS,report=()=>{}){
  return slices;
 }
 export function dayForDate(week,date){return week?.days?.find(day=>day.date===date)??null;}
-export function contextForDay(week,date,settings,now=Date.now()){
- const day=dayForDate(week,date);
+// Native shift boundary for a day, or null when WFM did not provide one.
+export function dayShiftBounds(day,settings=DEFAULT_SETTINGS){
+  if(!day||day.kind==='unknown'||day.kind==='day_off')return null;
+  const shift=(day.events??[]).find(e=>e.source==='SchAgentDay'||e.kind==='shift');
+  if(shift){const b=eventBounds(shift,settings.timeZone);if(b)return b;}
+  if(day.shift&&day.shift.start&&day.shift.end){
+    return eventBounds({start:day.shift.start,end:day.shift.end,startDate:day.shift.startDate??day.date,endDate:day.shift.endDate??day.date},settings.timeZone);
+  }
+  return null;
+}
+export function contextForDay(weekOrDay,date,settings,now=Date.now()){
+ const day=weekOrDay?.events?weekOrDay:dayForDate(weekOrDay,date);
  const segments=buildDaySegments(day,settings);
  const current=segments.find(s=>s.start<=now&&now<s.end)??null;
  const upcoming=segments.find(s=>s.start>now)??null;
- const shift=(day?.events??[]).find(e=>e.source==='SchAgentDay');
- const shiftBounds=shift?eventBounds(shift,settings.timeZone):null;
+ const shiftBounds=dayShiftBounds(day,settings);
  const next= current ? segments.find(s=>s.start===current.end)??null : upcoming;
  const nextBreak=segments.find(s=>s.start>now&&s.type==='break')??null;
  return {day,segments,current,next,nextBreak,shiftBounds};
@@ -157,7 +166,9 @@ export function alertCandidates(week,settings,now=Date.now()){
   else if(current.type==='queue')enabled=settings.alertQueues&&Boolean(before);
   if(enabled&&current.start>now&&current.start-now<=lead)candidates.push({id:`${date}:${current.id}:${current.start}`,name:current.name,type:current.type,at:current.start,remaining:current.start-now,lead});
  }
- const last=segments.at(-1);
+   const bounds=dayShiftBounds(day,settings);
+  if(settings.alertShiftStart&&bounds&&bounds.start>now&&bounds.start-now<=lead)candidates.push({id:`${date}:shift_start:${bounds.start}`,name:'Shift starts',type:'shift',at:bounds.start,remaining:bounds.start-now,lead});
+  const last=segments.at(-1);
  if(settings.alertShiftEnd&&last&&last.end>now&&last.end-now<=lead)candidates.push({id:`${date}:shift_end:${last.end}`,name:'Shift ends',type:'shift',at:last.end,remaining:last.end-now,lead});
  return candidates.sort((a,b)=>a.at-b.at);
 }

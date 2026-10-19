@@ -23,7 +23,7 @@ const screenStyles=Object.fromEntries(await Promise.all(Object.keys(SCREENS).map
 const style=document.createElement('style');style.id='visual-css';$('#visual-css').replaceWith(style);
 function visualStyle(variant){
  if(style.dataset.variant===variant)return;
- style.textContent=screenStyles[variant];style.dataset.variant=variant;
+ style.textContent=screenStyles[variant];style.dataset.variant=variant;style.setAttribute('href',`design-${variant}.css`);
 }
 const setPopupTheme=bindTheme(document.documentElement);
 let state=null,selectedDate=null,filter='special',mode='schedule',loginBusy=false,activeVariant='',activeDate='',statusTimer=null;
@@ -40,7 +40,7 @@ function syncAppearance(){
 }
 const today=()=>localDate(Date.now(),settings().timeZone);
 const weekStart=date=>{const d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10);};
-const week=()=>state?.week?.weekStart===weekStart(today())?state.week:null;
+const week=()=>state?.week?.weekStart===weekStart(today())?state.week:state?.weeks?.[weekStart(today())]??null;
 const selectedWeek=()=>{const start=weekStart(selectedDate??today());return state?.week?.weekStart===start?state.week:state?.weeks?.[start]??null;};
 const h=(tag,className='',text)=>{const element=document.createElement(tag);if(className)element.className=className;if(text!==undefined)element.textContent=text;return element;};
 const stamp=(epoch,options={})=>new Intl.DateTimeFormat('en-US',{timeZone:settings().timeZone,hour:'numeric',minute:'2-digit',...options}).format(new Date(epoch));
@@ -119,10 +119,10 @@ function changePopupMode(nextMode){
  slideView($('.pop',app),snapshot,mode==='settings'?1:-1,{stack:true});
 }
 function changeScheduleView(change,kind='day'){
- const before=kind==='day'?(selectedDate??today()):['special','queues','all'].indexOf(filter);
+ const before=kind==='day'?(selectedDate??today()):['special','queues','alarms'].indexOf(filter);
  const snapshot=captureView($('.tb',app)??$('.dc',app));
  change();
- const after=kind==='day'?selectedDate:['special','queues','all'].indexOf(filter);
+ const after=kind==='day'?selectedDate:['special','queues','alarms'].indexOf(filter);
  render();
  slideView($('.tb',app)??$('.dc',app),snapshot,after>before?1:-1);
 }
@@ -143,10 +143,16 @@ function footer(){
  if(link){link.href='#';link.onclick=event=>{event.preventDefault();openSite();};}
 }
 function liveCountdown(now=Date.now()){
- const w=week(),date=today(),day=dayForDate(w,date);
+ const w=selectedWeek()??week(),date=today(),day=dayForDate(w,date);
  if(!day||day.kind==='day_off')return null;
- const {current,next,shiftBounds}=contextForDay(w,date,settings(),now);
+ const {current,next,shiftBounds}=contextForDay(day,date,settings(),now);
  if(!shiftBounds||now>=shiftBounds.end)return null;
+ if(now<shiftBounds.start){
+  const lead=Number(settings().leadMinutes)*60000;
+  const diff=shiftBounds.start-now;
+  const progress=diff<=lead?(lead-diff)/lead:0;
+  return {text:formatDuration(diff,{seconds:true}),progress,name:'Shift start'};
+ }
  if(current){return {text:formatDuration(current.end-now,{seconds:true}),progress:segmentProgress(current,now),name:current.name};}
  if(next&&now<next.start&&now>=shiftBounds.start){
   const segments=buildDaySegments(day,settings()),prior=segments.filter(e=>e.end<=now).at(-1);
@@ -164,8 +170,8 @@ function dottedRing(){
 }
 function hero(day){
  const container=$('.hero',app);if(!container)return;
- const w=week(),date=selectedDate??today(),s=settings();let current=null,next=null,nextBreak=null,shiftBounds=null;
- if(day){({current,next,nextBreak,shiftBounds}=contextForDay(w,date,s,Date.now()));}
+ const w=selectedWeek()??week(),date=selectedDate??today(),s=settings();let current=null,next=null,nextBreak=null,shiftBounds=null;
+ if(day){({current,next,nextBreak,shiftBounds}=contextForDay(day,date,s,Date.now()));}
  const now=Date.now();
  let heading='Schedule',nextName='No upcoming change',nextAt='',then=null;
  if(date!==today()){
@@ -193,6 +199,8 @@ function variantIsStale(){return activeVariant==='stale';}
 function rows(day){
  const table=$('.tb',app);if(!table)return;
  const date=selectedDate??today();
+  if(filter==='alarms'){alarmsPanel(table);filterTabs(table);return;}
+  if(table.dataset.panel){delete table.dataset.panel;delete table.dataset.sig;table.replaceChildren();}
  if(!selectedWeek()){
   table.classList.add('journey');
   table.classList.add('missing-week');
@@ -208,11 +216,69 @@ function rows(day){
  }else{delete table.dataset.loadStatus;table.classList.remove('missing-week');journey(table,{day,settings:settings(),filter,isToday:date===today()});}
  filterTabs(table);
 }
-function filterTabs(table){
+const holdLeft=()=>Math.max(0,(state?.holdEndsAt??0)-Date.now());
+ function toolsCall(payload){
+  return send({type:'WFM_TOOLS',...payload}).then(result=>{if(!result?.ok)showToast(result?.reason==='too_many_alarms'?'You can keep up to 10 alarms.':result?.reason==='invalid_time'?'Pick a valid time.':'Could not save that change.');else state=result.state;return result;}).catch(()=>{showToast('Extension background service unavailable.');return null;});
+ }
+ function alarmsPanel(table){
+  table.classList.add('journey');table.classList.remove('missing-week');delete table.dataset.loadStatus;
+  const ear=state?.earChange??{enabled:false,intervalMin:60};
+  const holdTimer=state?.holdTimer??{enabled:false};
+  const sig=JSON.stringify([state?.userAlarms??[],ear.enabled,ear.intervalMin,holdTimer.enabled,Boolean(state?.holdEndsAt)]);
+  if(table.dataset.panel!=='alarms'||table.dataset.sig!==sig){table.dataset.panel='alarms';table.dataset.sig=sig;buildAlarms(table,ear);}
+  const sub=$('#hold-sub',table);
+  if(sub){
+   const now=Date.now(),ends=state?.holdEndsAt;
+   if(!holdTimer.enabled)sub.textContent='Show draggable 1 min timer on web pages';
+   else if(!ends)sub.textContent='On-page circular timer enabled · Idle (1:00)';
+   else if(ends>now)sub.textContent=`On-page timer running · ${Math.ceil((ends-now)/1000)}s left`;
+   else sub.textContent=`On-page timer overdue · -${Math.floor((now-ends)/1000)}s`;
+  }
+ }
+ function buildAlarms(table,ear){
+  const holdTimer=state?.holdTimer??{enabled:false},holdRunning=Boolean(state?.holdEndsAt);
+  const alarms=state?.userAlarms??[];
+  const root=h('div','alarms-panel');
+  const cardHtml=(id,color,rgb,symbol,title)=>`<div class="tile" style="--c:var(--${color});--tint:rgba(${rgb},.14)">${icon(symbol,16)}</div><div class="t"><div class="name">${title}</div><div class="meta" id="${id}"></div></div>`;
+  const holdCard=h('section','al-card'+(holdRunning?' live':''));
+  holdCard.innerHTML=cardHtml('hold-sub','amber','246,189,75','timer','Floating Hold Timer')+'<button class="al-sw" id="hold-sw" type="button" role="switch"><i></i></button>';
+  const holdSw=$('#hold-sw',holdCard);holdSw.setAttribute('aria-label','Floating Hold Timer');holdSw.setAttribute('aria-checked',String(Boolean(holdTimer.enabled)));
+  holdSw.onclick=async()=>{holdSw.disabled=true;await toolsCall({action:'toggle_hold_timer',enabled:!holdTimer.enabled});render();};
+  const earCard=h('section','al-card');
+  earCard.innerHTML=cardHtml('ear-sub','violet','182,156,255','people','Ear change')+'<button class="al-sw" id="ear-sw" type="button" role="switch"><i></i></button><div class="al-chips" role="group" aria-label="Ear change interval"></div>';
+  $('#ear-sub',earCard).textContent=ear.enabled?`Reminds you every ${ear.intervalMin} min`:'Remind me to switch ears';
+  const sw=$('#ear-sw',earCard);sw.setAttribute('aria-label','Ear change reminder');sw.setAttribute('aria-checked',String(Boolean(ear.enabled)));
+  sw.onclick=async()=>{sw.disabled=true;await toolsCall({action:'ear_change',enabled:!ear.enabled});render();};
+  for(const minutes of [30,45,60]){
+   const chip=h('button','al-chip',`${minutes} min`);chip.type='button';chip.setAttribute('aria-pressed',String(ear.intervalMin===minutes));
+   chip.onclick=async()=>{await toolsCall({action:'ear_change',intervalMin:minutes});render();};$('.al-chips',earCard).append(chip);
+  }
+  const label=h('div','al-label','My alarms');
+  const list=h('div','al-list');
+  if(!alarms.length)list.append(h('div','empty-hint','No alarms yet. Add one below.'));
+  for(const alarm of alarms){
+   const row=h('div','al-row'+(alarm.enabled?'':' off'));
+   row.innerHTML='<b class="al-time"></b><span class="al-name"></span><button class="al-sw" type="button" role="switch"><i></i></button><button class="al-del" type="button"></button>';
+   $('.al-time',row).textContent=alarm.time;$('.al-name',row).textContent=alarm.label;
+   const toggle=$('.al-sw',row);toggle.setAttribute('aria-label',`${alarm.label} at ${alarm.time}`);toggle.setAttribute('aria-checked',String(alarm.enabled));
+   toggle.onclick=async()=>{toggle.disabled=true;await toolsCall({action:'toggle_alarm',id:alarm.id,enabled:!alarm.enabled});render();};
+   const del=$('.al-del',row);del.innerHTML=icon('close',14,2);del.setAttribute('aria-label',`Delete alarm ${alarm.label}`);
+   del.onclick=async()=>{del.disabled=true;await toolsCall({action:'delete_alarm',id:alarm.id});render();};
+   list.append(row);
+  }
+  const form=h('form','al-form');
+  form.innerHTML='<input id="al-time" type="time" required aria-label="Alarm time"><input id="al-label" type="text" maxlength="40" placeholder="Label (optional)" aria-label="Alarm label"><button class="al-btn" type="submit">Add</button>';
+  $('#al-time',form).value=localTime(Date.now(),settings().timeZone);
+  form.onsubmit=async event=>{event.preventDefault();const time=$('#al-time',form).value;if(!time)return;const result=await toolsCall({action:'add_alarm',time,label:$('#al-label',form).value});if(result?.ok)showToast('Alarm added.','success');render();};
+  root.append(holdCard,earCard,label,list,form);
+  table.replaceChildren(root);
+ }
+ function filterTabs(table){
  const seg=$('.seg',app);if(!seg)return;
  seg.setAttribute('role','tablist');seg.setAttribute('aria-label','Schedule activities');
  table.id='schedule-activities';table.setAttribute('role','tabpanel');
- const buttons=$$('button',seg),groups=['special','queues','all'];
+ const buttons=$$('button',seg),groups=['special','queues','alarms'];
+  if(buttons[2])buttons[2].textContent='Alarms';
  buttons.forEach((button,i)=>{
   const selected=groups[i]===filter;button.classList.toggle('on',selected);button.type='button';button.id=`filter-${groups[i]}`;
   button.setAttribute('role','tab');button.setAttribute('aria-selected',String(selected));button.setAttribute('aria-controls',table.id);button.tabIndex=selected?0:-1;
@@ -278,7 +344,7 @@ function hideLiveRing(){
  $('.hero .ring',app)?.classList.remove('live-ring-slot');
 }
 function syncLiveRing(){
- if(mode!=='schedule'||!week()){hideLiveRing();return;}
+ if(mode!=='schedule'||(!week()&&!selectedWeek())){hideLiveRing();return;}
  const countdown=liveCountdown();
  if(!countdown){hideLiveRing();return;}
  $('.hd .lg',app)?.classList.remove('idle-header-ring');
@@ -295,10 +361,16 @@ function syncLiveRing(){
   const parts=remainingText.split(':').map(Number);
   const seconds=parts.reduce((total,part)=>total*60+part,0);
   const remaining=Math.max(0,Math.ceil(seconds));
-  timeText.textContent=isToday?remainingText:(remaining<60?String(remaining):`${Math.ceil(remaining/60)}m`);
+  const h=Math.floor(remaining/3600),m=Math.floor((remaining%3600)/60);
+  const hoursFormat=`${h}:${String(m).padStart(2,'0')}`;
+  if(isToday){
+   timeText.textContent=remaining>=3600?hoursFormat:remainingText;
+  }else{
+   timeText.textContent=remaining>=3600?hoursFormat:(remaining<60?String(remaining):`${Math.ceil(remaining/60)}m`);
+  }
   timeText.style.fontSize=Math.min(isToday?20:30,62/(.6*timeText.textContent.length))+'px';
  }
- const sublabel=el.querySelector('.ct span');if(sublabel)sublabel.hidden=!isToday;
+ const sublabel=el.querySelector('.ct span');if(sublabel){sublabel.hidden=!isToday;sublabel.textContent=countdown.name==='Shift start'?'STARTS':'LEFT';}
  const progress=Math.max(0,Math.min(1,countdown.progress));
  paintRing($('svg',el),progress);
  paintRing($('.hd .lg .countdown-svg',app),progress);
@@ -459,7 +531,7 @@ function renderSettings(){
  highlightChip(s.leadMinutes);
  preview(s.leadMinutes);
  for(const button of chips)button.onclick=async()=>{const minutes=Number(button.dataset.lead);chips.forEach(b=>b.disabled=true);highlightChip(minutes);preview(minutes);await settingChange({leadMinutes:minutes});highlightChip(settings().leadMinutes);preview(settings().leadMinutes);chips.forEach(b=>b.disabled=false);};
- for(const [text,key,meta,symbol,color,rgb] of [['Page-edge alert ring','showRing','Glowing border around the page','ring','accent','143,163,255'],['Breaks & meals','alertBreaks','Tea breaks and lunch','cup','amber','246,189,75'],['Coaching & meetings','alertExceptions','Coaching sessions and meetings','people','violet','182,156,255'],['Shift end','alertShiftEnd','Heads-up before your shift ends','flag','green','91,214,164'],['Queue-switch toast','queueSwitchToast','Pop-up when your queue changes','queue','sky','108,196,240']]){
+ for(const [text,key,meta,symbol,color,rgb] of [['Page-edge alert ring','showRing','Glowing border around the page','ring','accent','143,163,255'],['Breaks & meals','alertBreaks','Tea breaks and lunch','cup','amber','246,189,75'],['Coaching & meetings','alertExceptions','Coaching sessions and meetings','people','violet','182,156,255'],['Shift start','alertShiftStart','Heads-up before your shift begins','flag','green','91,214,164'],['Shift end','alertShiftEnd','Heads-up before your shift ends','flag','green','91,214,164'],['Queue-switch toast','queueSwitchToast','Pop-up when your queue changes','queue','sky','108,196,240']]){
   const row=h('div','opt');row.innerHTML=`<div class="tile" style="--c:var(--${color});--tint:rgba(${rgb},.14)">${icon(symbol,16)}</div><div class="t"><div class="name"></div><div class="meta"></div></div><button class="sw" type="button" role="switch"><i></i></button>`;
   $('.name',row).textContent=text;$('.meta',row).textContent=meta;
   const toggle=$('.sw',row);toggle.dataset.setting=key;toggle.setAttribute('aria-label',text);toggle.setAttribute('aria-checked',String(Boolean(s[key])));
@@ -479,7 +551,7 @@ chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes
  setInterval(()=>{if(mode==='schedule'){
   if(determineVariant()!==activeVariant)render();
   ensureWeekLoaded(selectedDate??today());
-  if(week()&&activeVariant!=='off'&&selectedDate===today())hero(dayForDate(week(),selectedDate));
+  if((selectedWeek()||week())&&activeVariant!=='off'&&selectedDate===today())hero(dayForDate(selectedWeek()||week(),selectedDate));
   if(activeVariant!=='off'&&activeVariant!=='signed-empty')rows(dayForDate(selectedWeek(),selectedDate??today()));
   syncLiveRing();
  }},1000);

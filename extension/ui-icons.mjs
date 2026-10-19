@@ -13,6 +13,9 @@ const paths={
  ring:'<rect x="3" y="4" width="18" height="16" rx="3"/><rect x="7" y="8" width="10" height="8" rx="1.5"/>',
  check:'<path d="M5 12.5l4.5 4.5L19 7"/>',
  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>',
+ close:'<path d="M18 6L6 18M6 6l12 12"/>',
+ trash:'<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+ timer:'<circle cx="12" cy="14" r="8"/><path d="M12 9v5l3 3M9 2h6M12 2v4"/>',
 };
 export function icon(name,size=18,stroke=1.8){return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name]??paths.flag}</svg>`;}
 

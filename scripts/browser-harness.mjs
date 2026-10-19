@@ -55,7 +55,7 @@ export async function init(page,state=fixture()){
   window.chrome={runtime:{lastError:null,getURL:path=>location.origin+'/extension/'+path,getManifest:()=>({version:'0.4.31'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event(),onStartup:event(),sendMessage(message,callback){window.__messages.push(message);let answered=false;for(const fn of listeners){const handled=fn(message,{url:location.href},r=>{if(!answered){answered=true;callback?.(r);}});if(handled===true)break;} }},
    storage:{local:area('local'),session:area('session'),onChanged:{addListener:fn=>storageListeners.push(fn)}},
    alarms:{clear:async()=>{},create:async()=>{},onAlarm:event()},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},
-   tabs:{query:async()=>[],sendMessage:async()=>{},create:async()=>({id:1}),update:async()=>{}},windows:{update:async()=>{}}};
+   tabs:{query:async()=>[],sendMessage:async()=>{},create:async()=>({id:1}),update:async()=>{},reload:async()=>{}},windows:{update:async()=>{}}};
   const original=Element.prototype.attachShadow;Element.prototype.attachShadow=function(options){const root=original.call(this,options);window.__closedShadow=root;return root;};
   const realFetch=window.fetch;window.fetch=(url,options)=>{if(String(url).startsWith('http://svdt1ipccwfm09')){window.__fetches.push(String(url));if(window.__wfmStatus){const response=()=>new Response('',{status:window.__wfmStatus});return window.__wfmDelayMs?new Promise(resolve=>setTimeout(()=>resolve(response()),window.__wfmDelayMs)):Promise.resolve(response());}return Promise.reject(new TypeError('WFM fixture offline'));}return realFetch(url,options);};
  },{state});

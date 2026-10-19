@@ -65,9 +65,28 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
 @media(prefers-reduced-motion:reduce){#queue-toast.visible{animation:none}}
 #sr{position:absolute;clip:rect(0,0,0,0);width:1px;height:1px;overflow:hidden}
 @media (prefers-reduced-motion:reduce){#edge{animation:none!important}}
-</style><div class="glow" id="edge"></div><div aria-label="Snooze for" class="po" id="snooze-menu" role="menu"><div class="l">Snooze for</div><div class="g"><button class="op" data-min="1" title="Snooze 1 minute(s)"><b>1</b><span>min</span></button><button class="op" data-min="2" title="Snooze 2 minute(s)"><b>2</b><span>min</span></button><button class="op" data-min="5" disabled="" title="Snooze 5 minute(s)"><b>5</b><span>min</span></button><button class="op" data-min="10" disabled="" title="Snooze 10 minute(s)"><b>10</b><span>min</span></button></div><div class="n"><svg aria-hidden="true" fill="none" height="13" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" style="flex:none;margin-top:1px" viewBox="0 0 24 24" width="13"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h0"></path></svg><span>5 and 10 min are longer than the time left.</span></div></div><div aria-label="Break alert" class="pill" id="control" role="group"><i id="dot"></i><span id="label">Tea Break 2 in <b>2:10</b></span><span class="sp"></span><button class="sz" id="snooze-toggle" aria-expanded="false" aria-controls="snooze-menu">Snooze<svg aria-hidden="true" fill="none" height="12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="12"><path d="M6 15l6-6 6 6"></path></svg></button><button aria-label="Close island" title="Close island" class="xx" id="dismiss"><svg aria-hidden="true" fill="none" height="16" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="16"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div><div id="page-toast" role="status"></div><div id="queue-toast" role="status" aria-live="polite" aria-atomic="true"></div><div id="snooze-feedback" role="status" aria-live="polite" aria-atomic="true"></div><span id="sr" aria-live="polite"></span>`
+#hold-widget{position:fixed;z-index:10;pointer-events:auto;display:none;width:72px;height:72px;border-radius:50%;background:var(--sf);border:1.5px solid var(--ln);box-shadow:0 8px 24px rgba(0,0,0,.25);user-select:none;touch-action:none;cursor:grab;box-sizing:border-box;right:28px;bottom:84px}
+#hold-widget.visible{display:flex;align-items:center;justify-content:center}
+#hold-widget.dragging{cursor:grabbing;transition:none!important}
+#hold-widget .hold-svg{position:absolute;inset:0;width:72px;height:72px;pointer-events:none}
+#hold-widget .hold-track{stroke:var(--ln)}
+#hold-widget .hold-live{stroke:var(--ac);transition:stroke-dashoffset .2s linear,stroke .2s}
+#hold-widget .hold-core{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+#hold-widget .hold-time{font:700 12px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;color:var(--tx)}
+#hold-widget .hold-btn{width:24px;height:24px;border-radius:50%;border:0;background:var(--as);color:var(--ac);display:grid;place-items:center;cursor:pointer;padding:0;transition:background .15s,color .15s,transform .15s}
+#hold-widget .hold-btn:hover{background:var(--ac);color:var(--sf)}
+#hold-widget .hold-btn:active{transform:scale(.92)}
+#hold-widget .hold-btn svg{width:11px;height:11px;fill:currentColor}
+#hold-widget.overdue{border-color:#f43f5e;animation:hold-pulse 1s ease-in-out infinite}
+#hold-widget.overdue .hold-live{stroke:#f43f5e}
+#hold-widget.overdue .hold-time{color:#f43f5e}
+#hold-widget.overdue .hold-btn{background:rgba(244,63,94,.18);color:#f43f5e}
+#hold-widget.overdue .hold-btn:hover{background:#f43f5e;color:white}
+@keyframes hold-pulse{0%,100%{box-shadow:0 0 0 0 rgba(244,63,94,.45),0 8px 24px rgba(0,0,0,.25)}50%{box-shadow:0 0 0 8px rgba(244,63,94,0),0 8px 24px rgba(0,0,0,.35)}}
+@media(prefers-reduced-motion:reduce){#hold-widget.overdue{animation:none}}
+</style><div class="glow" id="edge"></div><div aria-label="Snooze for" class="po" id="snooze-menu" role="menu"><div class="l">Snooze for</div><div class="g"><button class="op" data-min="1" title="Snooze 1 minute(s)"><b>1</b><span>min</span></button><button class="op" data-min="2" title="Snooze 2 minute(s)"><b>2</b><span>min</span></button><button class="op" data-min="5" disabled="" title="Snooze 5 minute(s)"><b>5</b><span>min</span></button><button class="op" data-min="10" disabled="" title="Snooze 10 minute(s)"><b>10</b><span>min</span></button></div><div class="n"><svg aria-hidden="true" fill="none" height="13" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" style="flex:none;margin-top:1px" viewBox="0 0 24 24" width="13"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h0"></path></svg><span>5 and 10 min are longer than the time left.</span></div></div><div aria-label="Break alert" class="pill" id="control" role="group"><i id="dot"></i><span id="label">Tea Break 2 in <b>2:10</b></span><span class="sp"></span><button class="sz" id="snooze-toggle" aria-expanded="false" aria-controls="snooze-menu">Snooze<svg aria-hidden="true" fill="none" height="12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="12"><path d="M6 15l6-6 6 6"></path></svg></button><button aria-label="Close island" title="Close island" class="xx" id="dismiss"><svg aria-hidden="true" fill="none" height="16" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="16"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div><div id="page-toast" role="status"></div><div id="queue-toast" role="status" aria-live="polite" aria-atomic="true"></div><div id="snooze-feedback" role="status" aria-live="polite" aria-atomic="true"></div><span id="sr" aria-live="polite"></span><div id="hold-widget" role="region" aria-label="Hold timer"><svg class="hold-svg" viewBox="0 0 36 36" aria-hidden="true"><circle class="hold-track" cx="18" cy="18" r="15" fill="none" stroke-width="2.5"></circle><circle class="hold-live" cx="18" cy="18" r="15" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="94.25 94.25" stroke-dashoffset="0" transform="rotate(-90 18 18)"></circle></svg><div class="hold-core"><span class="hold-time" id="hold-time">1:00</span><button type="button" class="hold-btn" id="hold-action" aria-label="Start hold timer"><svg viewBox="0 0 24 24"><polygon points="7,5 19,12 7,19"></polygon></svg></button></div></div>`
  document.documentElement.appendChild(host);
- const edge=shadow.querySelector('#edge'),menu=shadow.querySelector('#snooze-menu'),pill=shadow.querySelector('#control'),label=shadow.querySelector('#label'),dot=shadow.querySelector('#dot'),sr=shadow.querySelector('#sr'),pageToast=shadow.querySelector('#page-toast'),queueToast=shadow.querySelector('#queue-toast'),snoozeFeedback=shadow.querySelector('#snooze-feedback');
+ const edge=shadow.querySelector('#edge'),menu=shadow.querySelector('#snooze-menu'),pill=shadow.querySelector('#control'),label=shadow.querySelector('#label'),dot=shadow.querySelector('#dot'),sr=shadow.querySelector('#sr'),pageToast=shadow.querySelector('#page-toast'),queueToast=shadow.querySelector('#queue-toast'),snoozeFeedback=shadow.querySelector('#snooze-feedback'),holdWidget=shadow.querySelector('#hold-widget'),holdTime=shadow.querySelector('#hold-time'),holdBtn=shadow.querySelector('#hold-action'),holdArc=shadow.querySelector('.hold-live');
  const request=message=>new Promise(resolve=>chrome.runtime.sendMessage(message,result=>{if(chrome.runtime.lastError)resolve(null);else resolve(result);}));
  let forceCompactAlertId=null, compactUntilPointerLeaves=false, snoozePending=false, snoozeErrorUntil=0;
  let snoozeFeedbackTimer=null;
@@ -133,10 +152,103 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
   breathPhaseValue=(breathPhaseValue+delta*2*Math.PI/(1000*period))%(Math.PI*2);
   return breathPhaseValue;
  }
+ const CIRCUMFERENCE = 94.25;
+ let isHoldDragging=false, holdDragStartX=0, holdDragStartY=0, holdWidgetStartX=0, holdWidgetStartY=0, holdHasDragged=false;
+ holdWidget.addEventListener('pointerdown',e=>{
+  if(e.target.closest('#hold-action'))return;
+  isHoldDragging=true;holdHasDragged=false;
+  holdDragStartX=e.clientX;holdDragStartY=e.clientY;
+  const rect=holdWidget.getBoundingClientRect();
+  holdWidgetStartX=rect.left;holdWidgetStartY=rect.top;
+  try{holdWidget.setPointerCapture(e.pointerId);}catch{}
+  holdWidget.classList.add('dragging');
+ });
+ holdWidget.addEventListener('pointermove',e=>{
+  if(!isHoldDragging)return;
+  const dx=e.clientX-holdDragStartX, dy=e.clientY-holdDragStartY;
+  if(Math.abs(dx)>3||Math.abs(dy)>3)holdHasDragged=true;
+  const maxX=Math.max(10,window.innerWidth-holdWidget.offsetWidth-10);
+  const maxY=Math.max(10,window.innerHeight-holdWidget.offsetHeight-10);
+  const newX=Math.max(10,Math.min(maxX,holdWidgetStartX+dx));
+  const newY=Math.max(10,Math.min(maxY,holdWidgetStartY+dy));
+  holdWidget.style.left=`${newX}px`;
+  holdWidget.style.top=`${newY}px`;
+  holdWidget.style.right='auto';
+  holdWidget.style.bottom='auto';
+ });
+ const finishHoldDrag=async e=>{
+  if(!isHoldDragging)return;
+  isHoldDragging=false;
+  try{holdWidget.releasePointerCapture(e.pointerId);}catch{}
+  holdWidget.classList.remove('dragging');
+  if(holdHasDragged){
+   const rect=holdWidget.getBoundingClientRect();
+   await request({type:'WFM_TOOLS',action:'hold_position',position:{x:Math.round(rect.left),y:Math.round(rect.top)}});
+  }
+ };
+ holdWidget.addEventListener('pointerup',finishHoldDrag);
+ holdWidget.addEventListener('pointercancel',finishHoldDrag);
+
+ holdBtn.addEventListener('click',async()=>{
+  const running=Boolean(state?.holdEndsAt);
+  await request({type:'WFM_TOOLS',action:running?'hold_stop':'hold_start'});
+  await reload();
+ });
+
+ function paintHoldWidget(now){
+  const timer=state?.holdTimer;
+  if(!timer?.enabled){
+   holdWidget.classList.remove('visible');
+   return;
+  }
+  holdWidget.classList.add('visible');
+  if(!isHoldDragging&&timer.position&&typeof timer.position.x==='number'&&typeof timer.position.y==='number'){
+   const maxX=Math.max(10,window.innerWidth-holdWidget.offsetWidth-10);
+   const maxY=Math.max(10,window.innerHeight-holdWidget.offsetHeight-10);
+   const posX=Math.max(10,Math.min(maxX,timer.position.x));
+   const posY=Math.max(10,Math.min(maxY,timer.position.y));
+   holdWidget.style.left=`${posX}px`;
+   holdWidget.style.top=`${posY}px`;
+   holdWidget.style.right='auto';
+   holdWidget.style.bottom='auto';
+  }
+  const ends=state?.holdEndsAt;
+  if(!ends){
+   holdWidget.classList.remove('overdue');
+   holdTime.textContent='1:00';
+   holdArc.setAttribute('stroke-dashoffset','0');
+   holdArc.style.opacity='0.35';
+   holdBtn.setAttribute('aria-label','Start hold timer');
+   holdBtn.innerHTML='<svg viewBox="0 0 24 24"><polygon points="7,5 19,12 7,19"></polygon></svg>';
+   return;
+  }
+  holdArc.style.opacity='1';
+  if(now<ends){
+   holdWidget.classList.remove('overdue');
+   const remaining=ends-now;
+   const seconds=Math.ceil(remaining/1000);
+   const m=Math.floor(seconds/60),s=seconds%60;
+   holdTime.textContent=`${m}:${String(s).padStart(2,'0')}`;
+   const p=Math.max(0,Math.min(1,remaining/60000));
+   const offset=(1-p)*CIRCUMFERENCE;
+   holdArc.setAttribute('stroke-dashoffset',String(offset));
+   holdBtn.setAttribute('aria-label','Stop hold timer');
+   holdBtn.innerHTML='<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+  }else{
+   holdWidget.classList.add('overdue');
+   const overdue=Math.floor((now-ends)/1000);
+   const m=Math.floor(overdue/60),s=overdue%60;
+   holdTime.textContent=`-${m}:${String(s).padStart(2,'0')}`;
+   holdArc.setAttribute('stroke-dashoffset',String(CIRCUMFERENCE));
+   holdBtn.setAttribute('aria-label','Stop hold timer');
+   holdBtn.innerHTML='<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg>';
+  }
+ }
  function hide(){edge.classList.remove('visible');pill.classList.remove('visible');menu.classList.remove('visible');pageToast.classList.remove('visible');}
  function paint(){
   const now=Date.now();const settings=core.settingsWithDefaults(state?.settings);
   setOverlayTheme(settings.theme);
+  paintHoldWidget(now);
   evaluateQueueChange(now,settings);
   if(!state?.week||!settings.showRing){hide();lastAlert=null;return;}
   if(now-cachedAlertAt>=1000||cachedAlertAt===0){cachedAlert=core.selectedAlert(state.week,settings,state,now);cachedAlertAt=now;}

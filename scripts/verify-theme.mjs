@@ -24,7 +24,7 @@ try{
  const page=await open();await page.waitForSelector('.ev');
  await check('Light schedule keeps dates, completed events, metadata, selected labels and the ring readable',async()=>{
   assert.equal(await page.locator('html').getAttribute('data-theme'),'light');
-  assert.equal(await page.locator('.ev.done .card').evaluate(node=>getComputedStyle(node).opacity),'1');
+  assert.equal(await page.locator('.ev.done .card').first().evaluate(node=>getComputedStyle(node).opacity),'1');
   await readable(page,'Schedule title','.hd .tt .t','.top');
   await readable(page,'Completed activity','.ev.done .name','.ev.done .card');
   await readable(page,'Completed time','.ev.done .time','.pop');

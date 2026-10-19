@@ -3,11 +3,11 @@ import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 import {fixture,NOW} from './browser-harness.mjs';
-const report={checks:[]},listeners=[],data={local:{wfm_companion_state_v1:fixture()},session:{}},requests=[];
+const report={checks:[]},listeners=[],data={local:{wfm_companion_state_v1:fixture()},session:{}},requests=[],reloads=[],updates=[],windowUpdates=[];
 const originalNow=Date.now;let clock=Date.parse(NOW);Date.now=()=>clock;
 const event={addListener(){}};
 const area=name=>({get:async key=>Array.isArray(key)?Object.fromEntries(key.map(k=>[k,data[name][k]])):{[key]:data[name][key]},set:async patch=>Object.assign(data[name],structuredClone(patch)),remove:async keys=>{for(const k of keys)delete data[name][k];}});
-globalThis.chrome={storage:{local:area('local'),session:area('session')},runtime:{getManifest:()=>({version:'0.4.18'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event,onStartup:event},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},alarms:{clear:async()=>{},create:async()=>{},onAlarm:event},tabs:{query:async()=>[],sendMessage:async()=>{}}};
+globalThis.chrome={storage:{local:area('local'),session:area('session')},runtime:{getManifest:()=>({version:'0.4.18'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event,onStartup:event},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},alarms:{clear:async()=>{},create:async()=>{},onAlarm:event},tabs:{query:async()=>[],sendMessage:async()=>{},update:async(id,opts)=>{updates.push({id,opts});},reload:async id=>{reloads.push(id);}},windows:{update:async(id,opts)=>{windowUpdates.push({id,opts});}}};
 globalThis.__fetchWeek=async date=>{
  requests.push(date);const source=fixture().week,start=new Date(date+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-(start.getUTCDay()+6)%7);const monday=start.toISOString().slice(0,10);
  return {...source,ok:true,weekStart:monday,weekEnd:new Date(+start+6*86400000).toISOString().slice(0,10),days:source.days.map((day,i)=>{const date=new Date(+start+i*86400000).toISOString().slice(0,10);return {...day,date,events:day.events.map(e=>({...e,startDate:date,endDate:date}))};})};
@@ -45,6 +45,16 @@ try{
  await module.refresh({trigger:'popup',date:'2026-10-19'});await module.refresh({trigger:'popup',date:'2026-10-19'});
  assert.equal(requests.length,checkpointReads+1);
  report.checks.push('Confirmed shifts ignore fixed clock times; the next shift gets one check in its own window');
+ const handle=listeners[0];
+ globalThis.chrome.tabs.query=async()=>[{id:42,url:'http://svdt1ipccwfm09:8070/wfm/Agent?#Schedule;view=MY_SCHEDULE',active:false,windowId:7}];
+ const reused=await new Promise(resolve=>handle({type:'WFM_OPEN_SITE'},{},resolve));
+ assert.equal(reused.ok,true);
+ assert.equal(reused.action,'reused');
+ assert.equal(reused.tabId,42);
+ assert.deepEqual(reloads,[42]);
+ assert.ok(updates.some(u=>u.id===42&&u.opts?.active===true));
+ assert.ok(windowUpdates.some(w=>w.id===7&&w.opts?.focused===true));
+ report.checks.push('Reused existing WFM tab is reloaded and focused');
  for(const check of report.checks)console.log('PASS '+check);
 }catch(e){report.failure=e.stack;console.error(e);process.exitCode=1;}
 finally{Date.now=originalNow;await writeFile('verification/background-report.json',JSON.stringify(report,null,2));}
