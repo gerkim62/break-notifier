@@ -19,7 +19,7 @@ function shiftBounds(day,zone){
 // has opened. Attempts and failures are deliberately excluded from updatedAt.
 export function scheduleFreshness(state,date,now=Date.now()){
  const zone=settingsWithDefaults(state?.settings).timeZone,today=localDate(now,zone),start=scheduleWeekStart(date);
- const week=cachedWeek(state,start),updated=updatedAt(state,start),day=week?.days?.find(day=>day.date===date);
+ const week=cachedWeek(state,start),day=week?.days?.find(day=>day.date===date),updated=day?.source==='dom'?0:updatedAt(state,start);
  const daily=wallTimeToEpoch(today,'00:00',zone),base={weekStart:start,updated,date};
  const dailyKey=`${start}:day:${today}`;
  if(!week)return {...base,status:'missing',needsCheck:true,key:dailyKey};
@@ -36,7 +36,7 @@ export function scheduleFreshness(state,date,now=Date.now()){
  if(date===today){
   const weeks=new Map([...(Object.entries(state?.weeks??{})),...(state?.week?[[state.week.weekStart,state.week]]:[])]);
   for(const [weekStart,week] of weeks)for(const candidate of week.days??[]){
-   const active=shiftBounds(candidate,zone),checked=updatedAt(state,weekStart);
+   const active=shiftBounds(candidate,zone),checked=candidate.source==='dom'?0:updatedAt(state,weekStart);
    if(active&&active.start<=now&&now<active.end&&checked>=active.start-CONFIRM_BEFORE)
     return {...base,bounds:active,key:`${weekStart}:shift:${active.start}:${active.end}`,status:'confirmed',needsCheck:false};
   }

@@ -76,9 +76,10 @@ export function journey(container,{day,settings,filter,isToday,isPast,now=Date.n
   row.innerHTML=`<div class="time"><b></b><small></small></div><div class="rail"><div class="dot">${done?icon('check',8,4):''}</div>${i<events.length-1?`<div class="tail"><b class="fill" style="height:${p*100}%"></b></div>`:''}</div><div class="card"><div class="tile">${icon(symbol)}</div><div class="t"><div class="name"></div><div class="meta"></div></div><div class="chip"></div>${live?`<div class="bar"><b style="width:${p*100}%"></b></div>`:''}</div>`;
   const parts=stamp(s.start).split(' ');row.querySelector('.time b').textContent=parts[0];row.querySelector('.time small').textContent=parts[1];
   const ms=s.type==='milestone',startMs=s.milestone==='start';row.querySelector('.name').textContent=s.name;row.querySelector('.meta').textContent=ms?(done?(startMs?'Started ':'Ended '):(startMs?'Starts ':'Ends '))+stamp(s.start):done?text+' · done':live?'Ends '+stamp(s.end):text+' · ends '+stamp(s.end);
+  if(s.source==='WfmDom'&&s.type==='other'&&!ms&&!live)row.querySelector('.meta').textContent=done?'Activity · done':'Activity · ends '+stamp(s.end);
   row.querySelector('.chip').textContent=ms?(isToday&&!done?'in '+duration(s.start-now):startMs?'Start':'End'):live?duration(s.end-now)+' left':duration(s.end-s.start);next.append(row);
  });
- if(events.length){const breaks=events.filter(s=>s.type==='break');next.append(make('div','total',filter==='special'?`${breaks.length} breaks · ${Math.round(breaks.reduce((n,s)=>n+s.end-s.start,0)/60000)} min total${isToday?' today':''}`:`${events.length} ${filter==='queues'?'queue activities':'activities'} · ${duration(events.reduce((n,s)=>n+s.end-s.start,0))} total`));}
+ if(events.length){const breaks=events.filter(s=>s.type==='break'),activities=events.filter(s=>s.type!=='milestone');next.append(make('div','total',day?.source==='dom'?`${activities.length} activities · ${duration(activities.reduce((n,s)=>n+s.end-s.start,0))} total`:filter==='special'?`${breaks.length} breaks · ${Math.round(breaks.reduce((n,s)=>n+s.end-s.start,0)/60000)} min total${isToday?' today':''}`:`${events.length} ${filter==='queues'?'queue activities':'activities'} · ${duration(events.reduce((n,s)=>n+s.end-s.start,0))} total`));}
  else next.append(make('div','empty-hint','No schedule detected.'));
  reconcile(timeline,next);
 }

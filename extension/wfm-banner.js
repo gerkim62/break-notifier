@@ -53,7 +53,7 @@ body{margin:0;font-family:Figtree,system-ui,sans-serif;color:var(--tx)}button{fo
   setBannerTheme(settings.theme);
   const show=visibleSchedule&&Boolean(domChange?.fingerprint)&&domChange.fingerprint!==bannerHiddenFingerprint;
   banner.classList.toggle('show',show);
-  if(show){const today=core.localDate(Date.now(),settings.timeZone);shadow.querySelector('#title').textContent=`New schedule detected for today, ${shortDate(today)}.`;}
+  if(show){const today=core.localDate(Date.now(),settings.timeZone);shadow.querySelector('#title').textContent=domChange.reason==='schedule_discovered'?`Schedule loaded from WFM for today, ${shortDate(today)}.`:`New schedule detected for today, ${shortDate(today)}.`;}
  }
  shadow.querySelector('#apply').addEventListener('click',async()=>{
   const btn=shadow.querySelector('#apply');btn.disabled=true;btn.textContent='Refreshing…';

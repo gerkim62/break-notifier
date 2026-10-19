@@ -36,6 +36,28 @@ try{
   assert.equal(await page.locator('#popup-toast.visible').count(),1);
   await page.clock.runFor(3200);assert.equal(await page.locator('#popup-toast.visible').count(),0);
  });
+ await check('RPC format rejection shows troubleshooting feedback without falsely offering login',async()=>{
+  const rpcPage=await env.browser.newPage({viewport:{width:380,height:600},reducedMotion:'reduce'});
+  rpcPage.on('pageerror',e=>report.errors.push(e.message));await init(rpcPage);
+  await rpcPage.addInitScript(()=>{
+   window.__wfmStatus=200;
+   const originalFetch=window.fetch;
+   window.fetch=(url,options)=>{
+    if(!String(url).startsWith('http://svdt1ipccwfm09'))return originalFetch(url,options);
+    const response=new Response('//EX[1,["com.google.gwt.user.client.rpc.IncompatibleRemoteServiceException/3936916533"],0,7]',{status:200});
+    Object.defineProperty(response,'url',{value:String(url)});return Promise.resolve(response);
+   };
+  });
+  await rpcPage.goto(env.base+'/extension/popup.html');await rpcPage.waitForSelector('.ev');
+  const before=await rpcPage.evaluate(()=>structuredClone(window.__storage.local.wfm_companion_state_v1));
+  await rpcPage.locator('.hd .btn').click();await rpcPage.waitForSelector('#popup-toast.visible');
+  assert.equal(await rpcPage.locator('#popup-toast .toast-message').textContent(),'WFM rejected the extension RPC format. Export diagnostics for troubleshooting.');
+  assert.equal(await rpcPage.locator('#popup-toast .toast-action').count(),0);
+  const after=await rpcPage.evaluate(()=>window.__storage.local.wfm_companion_state_v1);
+  assert.deepEqual(after.week,before.week);assert.equal(after.lastUpdated,before.lastUpdated);
+  assert.equal(after.lastError.reason,'rpc_error');
+  await rpcPage.close();
+ });
  assert.deepEqual(report.errors,[]);
 }catch(e){report.failure=e.stack;console.error(e);process.exitCode=1;}
 finally{await writeFile('verification/toast-report.json',JSON.stringify(report,null,2));await env.close();}

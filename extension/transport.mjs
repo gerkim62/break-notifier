@@ -4,10 +4,24 @@ const EPOCH=Date.UTC(1899,11,30);
 const DAY_MS=86400000;
 const TIMEOUT_MS=15000;
 const fail=(reason,message)=>({ok:false,reason,message});
-// A CheckSession RPC rejection means there is no verified usable session.
-// Unrelated RPC exceptions do NOT by themselves imply the user logged out.
-const knownAuthenticationException = response =>
- /(?:SessionExpiredException|NotAuthenticatedException|UnauthenticatedException|AuthenticationException|LoginRequiredException)/.test(response);
+// Match serialized type entries, never free-form server messages. Only these
+// fixed categories reach diagnostics; response bodies can contain personal data.
+function rpcExceptionReason(text){
+ try{
+  const data=JSON.parse(text.slice(4)),strings=data.at(-3);
+  if(!Array.isArray(strings))return 'unclassified_rpc_exception';
+  const types=strings.filter(value=>typeof value==='string'&&/^[\w.$]+\/\d+$/.test(value)).map(value=>value.slice(0,value.indexOf('/')));
+  const has=pattern=>types.some(type=>pattern.test(type));
+  if(has(/\.(?:SessionExpiredException|NotAuthenticatedException|UnauthenticatedException|AuthenticationException|LoginRequiredException)$/))return 'authentication_exception';
+  if(has(/^com\.google\.gwt\.user\.client\.rpc\.IncompatibleRemoteServiceException$/))return 'rpc_contract_mismatch';
+  if(has(/^com\.google\.gwt\.user\.client\.rpc\.(?:SerializationException|SerializedTypeViolationException)$/))return 'rpc_serialization_error';
+  if(has(/^com\.google\.gwt\.user\.client\.rpc\.RpcTokenException$/))return 'rpc_token_rejected';
+  if(has(/^net\.customware\.gwt\.dispatch\.shared\.UnsupportedActionException$/))return 'rpc_action_unsupported';
+  if(has(/^com\.genesyslabs\.shared\.exception\.AccessDeniedException$/))return 'rpc_access_denied';
+  if(has(/^java\.lang\.(?:IllegalArgumentException|NullPointerException|IllegalStateException)$/))return 'rpc_server_error';
+ }catch{/* Malformed RPC errors remain unclassified, never treated as logout. */}
+ return 'unclassified_rpc_exception';
+}
 const serial=iso=>(Date.parse(iso+'T00:00:00Z')-EPOCH)/DAY_MS;
 function sessionResult(text){
  if(!text.startsWith('//OK'))return fail('rpc_error','Session check did not return a valid RPC result');
@@ -35,17 +49,18 @@ export function createWfmClient({origin='http://svdt1ipccwfm09:8070',fetchImpl=f
    if(!response.ok)return fail('network_error',`HTTP ${response.status}`);
    const text=await response.text();logger('network','body_classified',{endpoint:path,bytes:text.length,rpcStatus:text.startsWith('//OK')?'OK':text.startsWith('//EX')?'EX':/^\s*</.test(text)?'HTML':'OTHER'});
    if(text.startsWith('//EX')){
-    const namedAuth=knownAuthenticationException(text);
-    const sessionRejected=path==='dispatch'; // Only used for CheckSession in this client.
-    const auth=namedAuth||sessionRejected;
-    logger('network','rpc_exception',{endpoint:path,reason:namedAuth?'authentication_exception':sessionRejected?'session_check_rejected':'unclassified_rpc_exception'});
-    return fail(auth?'not_authenticated':'rpc_error',auth?'No verified WFM session. Log in to continue.':'WFM returned an RPC error');
+    const reason=rpcExceptionReason(text),auth=reason==='authentication_exception';
+    logger('network','rpc_exception',{endpoint:path,reason});
+    const message=auth?'No verified WFM session. Log in to continue.':
+     reason==='rpc_contract_mismatch'||reason==='rpc_serialization_error'?'WFM rejected the extension RPC format. Export diagnostics for troubleshooting.':
+     path==='dispatch'?'WFM session check failed. Export diagnostics for troubleshooting.':'WFM returned an RPC error. Export diagnostics for troubleshooting.';
+    return fail(auth?'not_authenticated':'rpc_error',message);
    }
    if(!text.startsWith('//OK'))return fail(/^\s*</.test(text)?'not_authenticated':'unexpected_response','Unexpected WFM RPC response');
    return {ok:true,text};
   }catch(e){logger('network','request_failed',{endpoint:path,reason:ac.signal.aborted?'timeout':e instanceof TypeError?'fetch_type_error':'request_error',timedOut:ac.signal.aborted,elapsedMs:Date.now()-t0});return fail('network_error',ac.signal.aborted?'Request timed out':'Unable to contact WFM')}finally{clearTimeout(timeout)}
  }
- return {async checkSession(logger=()=>{}){logger('auth','session_check_started');const result=await post('dispatch',profile.checkSessionBody.replace('{moduleBase}',base),logger);const session=result.ok?sessionResult(result.text):result;logger('auth','session_check_completed',{authenticated:session.ok,reason:session.ok?'success':session.reason});return session;},
+ return {async checkSession(logger=()=>{}){logger('auth','session_check_started');const result=await post('dispatch',profile.checkSessionBody.replace('{moduleBase}',base),logger);const session=result.ok?sessionResult(result.text):result;logger('auth','session_check_completed',{...(session.ok?{authenticated:true}:session.reason==='not_authenticated'?{authenticated:false}:{}),reason:session.ok?'success':session.reason});return session;},
  async fetchWeek(date,{source=1,agentId,logger=()=>{}}={}){
   let dates;try{dates=isoWeek(date)}catch(e){return fail('invalid_date',e.message)}
   logger('input','week_validated',{source});let id=agentId;

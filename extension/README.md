@@ -1,4 +1,12 @@
-# WFM Schedule Companion v0.4.31
+# WFM Schedule Companion v0.4.35
+
+The page overlay safely handles null or missing background state during startup, resize and storage removal. It stays hidden until state is available, then resumes normal reminders. Null optional snooze/dismissal fields are accepted. Failed or throwing state requests no longer crash rendering, and an empty response preserves already-loaded state.
+
+Breaks & meals now reminds before both starts and ends, using the selected lead time. During an active break the alert says, for example, Tea Break 1 ends in 05:00. End reminders have separate dismissal IDs, honor snooze and stop at the original break end, including overnight breaks. Explicit English DOM labels such as Tea Break 1, Lunch Break and Meal now receive break display styling and start/end reminders, without assigning native state IDs. Other DOM activities remain unclassified. Reload the extension and existing browser tabs to receive the update.
+
+Opening WFM's My Schedule automatically loads visible schedules into missing or unknown saved days, including when no week is cached. The popup shows the displayed activity names and times, labeled Loaded from WFM page. DOM data stays provisional and never advances a successful RPC-check timestamp or invents native activity types. Published RPC days remain intact; Refresh can replace the fallback with a full native read. Stable snapshots, current-week validation and banner dismissal still apply. Passive loading makes no WFM requests. Today's discovered schedule shows a loaded banner; unavailable rows and completed shifts do not raise one.
+
+RPC exceptions during a session check no longer automatically mean the user is signed out. Only recognized authentication failures trigger Log in. Other RPC failures preserve saved data and successful-check timestamps, and show a troubleshooting message. Exported diagnostics include fixed error categories for compatibility, serialization, token, unsupported-action, access and server failures; they omit server messages and response bodies. A v0.4.31 export does not contain enough detail to establish the underlying RPC failure. After upgrading, use Refresh and export diagnostics again if it still fails.
 
 **Settings → Display → Theme** offers System, Light and Dark, with a saved preference. System follows live OS appearance changes; explicit Light/Dark override the OS. The popup and isolated alert/snooze/toast/WFM-banner UI share theme tokens. Light mode fixes completed-event and day-off readability, selected-date contrast, reminder borders, switch knobs and tracks, diagnostic text and destructive-action colors. Theme selection is keyboard accessible, survives reopening, restores the saved choice on a failed save, and does not issue WFM requests or change the website underneath overlays.
 
@@ -22,7 +30,7 @@ Snooze now settles the island's initial width before pointer interaction. Enter/
 
 Next week selects Monday; previous week selects Sunday. Entering the current week from either direction selects today. You can then choose any day; data updates preserve that choice. Today, arrow keys and swipes also update the selected day. Cached weeks appear immediately, and due or missing weeks load on opening. Refresh retries or updates the selected week and retains today's alert schedule. Up to 12 weeks are saved.
 
-Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.31 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated snooze content script.
+Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.35 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated content scripts.
 
 Verification is in the workspace's `verification/` folder. Real Chrome renders the production popup/content scripts using fixture schedules and browser APIs. A footer comparison checks its appearance against the original ZIP's popup. Long-schedule checks verify whole-page scrolling, access to the final activity, countdown alignment, and preserved scroll position. Other checks cover the day picker, journey, movable ring, week navigation/cache, HTML settings presets/switches and diagnostics, themes, and mouse/keyboard snooze. Authenticated WFM network access was not available in this environment.
 

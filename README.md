@@ -1,5 +1,13 @@
 # Break notifier / WFM Schedule Companion
 
+v0.4.35 fixes an overlay startup crash when a repaint runs before background state arrives. Null state and null optional snooze/dismissal maps are safe, the overlay stays hidden while state is absent, and normal alerts resume after a valid state update. Failed or throwing state requests do not crash the drawing timer, and an empty response does not discard already-loaded state.
+
+v0.4.34 adds reminders before breaks and meals end, using the existing lead time and Breaks & meals switch. The page alert says, for example, Tea Break 1 ends in 05:00. End reminders have separate dismissal IDs from start reminders, honor snooze, and use the original interval end through overlaps and overnight breaks. DOM schedules also recognize explicit English labels such as Tea Break 1, Lunch Break and Meal for display and reminders, without inventing native state IDs; other labels stay unclassified.
+
+v0.4.33 automatically loads visible schedules on opening WFM's My Schedule when the current week or individual saved days are missing or unknown. Stable rendered rows fill those gaps with the displayed activity names and times. A banner acknowledges today's discovered schedule. DOM data is labeled Loaded from WFM page and stays provisional; it never inherits successful RPC-check timestamps or invents native activity types. Existing published RPC days remain intact. Refresh can replace the fallback with the full native schedule. Passive DOM loading makes no WFM requests and respects banner dismissal.
+
+v0.4.32 fixes misleading session-expired errors: an RPC exception from `CheckSession` now requests login only when it identifies an authentication failure. Other exceptions preserve the saved schedule and report an RPC error. Diagnostics record fixed categories for RPC compatibility, serialization, token, access, unsupported-action and server failures, without server messages or response bodies. The older v0.4.31 export cannot identify the underlying exception; reproduce the failure and export diagnostics after upgrading to distinguish these causes.
+
 The updated extension is in [`extension/`](extension/), rebuilt on the supplied v0.4.17 popup. The day selector and events list use the supplied designs, with week navigation added. Settings uses the supplied HTML layout with 2/5/10-minute presets and no manual minutes field. The schedule uses one scrollbar: its header, picker, countdown and filters scroll away with the events; the small action footer stays available. The popup remains 380×600, with the existing themes and snooze repair. Your scroll position survives data updates and a trip to Settings. The original ZIP and both HTML design references remain available locally.
 
 Next week opens on Monday, previous week on Sunday, and returning to the current week selects today. Any day can still be selected afterward.
@@ -18,7 +26,7 @@ The session-expired toast includes a **Log in** action. Toasts pause dismissal w
 
 Choose **System, Light or Dark** in **Settings → Display → Theme**. The preference is saved and applies to the popup, snooze controls, queue toasts and WFM banner. System follows OS appearance changes; explicit choices override it. Light mode uses readable completed-event text, selected dates, switch states, reminder controls and diagnostic actions. Theme changes do not fetch WFM or recolor the website under extension overlays.
 
-- Install: extract `wfm-schedule-companion-v0.4.31-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
+- Install: extract `wfm-schedule-companion-v0.4.35-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
 - Screenshots and pixel comparisons: [`verification/index.html`](verification/index.html).
 - Source: [`extension/popup.js`](extension/popup.js), [`extension/schedule-components.mjs`](extension/schedule-components.mjs), [`extension/schedule-components.css`](extension/schedule-components.css), [`extension/ring.js`](extension/ring.js), [`extension/background.mjs`](extension/background.mjs).
 

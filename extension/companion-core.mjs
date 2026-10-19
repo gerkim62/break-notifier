@@ -65,6 +65,12 @@ export function eventBounds(event,zone){
 export const rowType=event=> {
  if(event.source==='SchAgentDay'||event.kind==='shift')return 'shift';
  if(event.source==='SchCoverage'||event.kind==='allocation')return 'queue';
+ // The English DOM adapter exposes labels, not native state IDs. Recognize
+ // explicit break/meal labels for reminders without assigning native types.
+ if(event.source==='WfmDom'&&event.kind==='activity'&&typeof event.name==='string'){
+  const name=event.name.trim().replace(/\s*\(\s*\)\s*$/,'').replace(/\s+/g,' ');
+  if(/^(?:(?:tea|coffee|rest|lunch|meal)\s+)?break(?:\s*#?\s*\d+)?$|^(?:lunch|meal)(?:\s*\d+)?$/i.test(name))return 'break';
+ }
  if(event.stateType===4||event.stateType===5)return 'break';
  if(event.stateType===3)return 'exception';
  if(event.stateType===2)return 'time_off';
@@ -79,8 +85,9 @@ export function eventName(event,settings=DEFAULT_SETTINGS){
  return settings.showQueuePrefixes===false&&event.source==='SchCoverage'?name.replace(/^\d+\.\s*/,''):name;
 }
 function priority(e){
- if(e.source==='SchAgentDay')return 10;
+ if(e.source==='SchAgentDay'||e.kind==='shift')return 10;
  if(e.source==='SchCoverage')return 30;
+ if(e.source==='WfmDom'&&rowType(e)==='break')return 40;
  if([2,3,4,5,9].includes(e.stateType))return 40;
  if(e.stateType===7)return 20;
  if(e.stateType===1)return 0;
@@ -189,11 +196,21 @@ export function userAlarmCandidates(userAlarms,settings,now=Date.now()){
 export function alertCandidates(week,settings,now=Date.now(),userAlarms=[]){
  const personal=userAlarmCandidates(userAlarms,settings,now);
  if(!week)return personal.sort((a,b)=>a.at-b.at);
- const date=localDate(now,settings.timeZone),day=dayForDate(week,date);
- if(!day||day.kind==='unknown'||day.kind==='day_off')return personal.sort((a,b)=>a.at-b.at);
- const segments=buildDaySegments(day,settings);
  const lead=Number(settings.leadMinutes)*60000;
  const candidates=[...personal];
+ // Use the original break's end, rather than a projected timeline slice that
+ // could end early at an overlapping activity. Include overnight breaks.
+ if(settings.alertBreaks)for(const day of week.days??[]){
+  if(day.kind==='unknown'||day.kind==='day_off')continue;
+  for(const event of day.events??[]){
+   if(rowType(event)!=='break')continue;
+   const bounds=eventBounds(event,settings.timeZone);
+   if(bounds&&bounds.start<=now&&bounds.end>now&&bounds.end-now<=lead)candidates.push({id:`${day.date}:${stableId(event)}:end:${bounds.end}`,name:`${eventName(event,settings)} ends`,type:'break',boundary:'end',at:bounds.end,remaining:bounds.end-now,lead});
+  }
+ }
+ const date=localDate(now,settings.timeZone),day=dayForDate(week,date);
+ if(!day||day.kind==='unknown'||day.kind==='day_off')return candidates.sort((a,b)=>a.at-b.at);
+ const segments=buildDaySegments(day,settings);
  for(let i=0;i<segments.length;i++){
   const current=segments[i],before=segments[i-1];
   let enabled=false;
@@ -208,12 +225,13 @@ export function alertCandidates(week,settings,now=Date.now(),userAlarms=[]){
  if(settings.alertShiftEnd&&last&&last.end>now&&last.end-now<=lead)candidates.push({id:`${date}:shift_end:${last.end}`,name:'Shift ends',type:'shift',at:last.end,remaining:last.end-now,lead});
  return candidates.sort((a,b)=>a.at-b.at);
 }
-export function selectedAlert(week,settings,{snoozes={},dismissed={},userAlarms=[]}={},now=Date.now()){
+export function selectedAlert(week,settings,state={},now=Date.now()){
+ const {snoozes={},dismissed={},userAlarms=[]}=state??{};
  // A snooze pauses the visual alert as a whole, not merely the matching
  // candidate. Otherwise a later eligible event can immediately replace the
  // snoozed one and leave the viewport glowing throughout the snooze.
- if(Object.values(snoozes).some(until=>Number.isFinite(until)&&until>now))return null;
- return alertCandidates(week,settings,now,userAlarms).find(e=>!dismissed[e.id])??null;
+ if(Object.values(snoozes??{}).some(until=>Number.isFinite(until)&&until>now))return null;
+ return alertCandidates(week,settings,now,userAlarms).find(e=>!dismissed?.[e.id])??null;
 }
 export function weekFingerprint(week){
  if(!week)return '';

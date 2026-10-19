@@ -4,7 +4,7 @@ import {createWfmClient} from './transport.mjs';
 import {createDiagnosticRun,diagnosticSummary,diagnosticExport,diagnosticLimit} from './diagnostics.mjs';
 import {DEFAULT_SETTINGS,settingsWithDefaults,localDate,wallTimeToEpoch,weekFingerprint,changedRemainingToday,changeDescription,selectedAlert,isDuringShift,currentShift,nextShift} from './companion-core.mjs';
 import {scheduleFreshness,scheduleRefreshDue} from './schedule-freshness.mjs';
-import {compareDomToCached,observationId} from './wfm-dom-compare.mjs';
+import {compareDomToCached,observationId,scheduleFromDom} from './wfm-dom-compare.mjs';
 
 const client=createWfmClient();
 const VERSION=chrome.runtime.getManifest().version;
@@ -30,7 +30,9 @@ async function getState(){
 }
 async function patchState(change){
  stateQueue=stateQueue.catch(()=>{}).then(async()=>{
-  const old=await getState(); const next={...old,...change};
+  const old=await getState(),patch=typeof change==='function'?change(old):change;
+  if(!patch)return old;
+  const next={...old,...patch};
   stateLoaded=Promise.resolve(next);
   await chrome.storage.local.set({[STATE_KEY]:next});
   return next;
@@ -111,10 +113,12 @@ export async function refresh({trigger='manual',date:requestedDate}={}){
  const previous=fetchInProgress;
  const request=(async()=>{
   if(previous)await previous.catch(()=>{});
-  const state=await getState();const now=Date.now(),currentDate=localDate(now,state.settings.timeZone),date=requestedDate??currentDate;
+  let state=await getState();const now=Date.now(),currentDate=localDate(now,state.settings.timeZone),date=requestedDate??currentDate;
   if(trigger==='popup'&&!scheduleRefreshDue(state,date,now))return {ok:true,cached:true};
   const policy=scheduleFreshness(state,date,now);
   const result=await getWeekSchedule(date);
+  // A passive DOM import or settings save may have completed during the read.
+  state=await getState();
   if(!result.ok){
    const error={reason:result.reason,message:result.message??null,at:Date.now()};
    const refreshFailures=Object.fromEntries(Object.entries({...state.refreshFailures,[policy.key]:error}).sort((a,b)=>b[1].at-a[1].at).slice(0,48));
@@ -152,8 +156,8 @@ export async function refresh({trigger='manual',date:requestedDate}={}){
 }
 
 // Invoked only by the content script when WFM renders its My Schedule DOM.
-// A passive observation never fetches or navigates WFM and never overwrites
-// its much richer RPC cache with the incomplete DOM representation.
+// A passive observation can fill missing days from the visible DOM. It never
+// fetches, navigates WFM, or overwrites a published day from the richer RPC cache.
 async function observeDom(message,sender){
  const page=sender?.url??sender?.tab?.url??'';
  if(!/^http:\/\/svdt1ipccwfm09:8070\/wfm\/Agent(?:[?#]|$)/i.test(page) || !sender?.tab?.id)
@@ -169,8 +173,32 @@ async function observeDom(message,sender){
  if(observation.days.some(d=>typeof d.date!=='string'||!['scheduled','day_off','unavailable'].includes(d.status)||!Array.isArray(d.details??[])||(d.details??[]).length>90))
   return {ok:false,reason:'invalid_observation'};
  const id=observationId(observation);
- const compared=compareDomToCached(observation,s.week,s.settings,Date.now(),
+ const cachedWeek=s.week?.weekStart===currentWeek?s.week:s.weeks?.[currentWeek];
+ const fallback=scheduleFromDom(observation,Date.now(),(date,time)=>wallTimeToEpoch(date,time,s.settings.timeZone));
+ if(!fallback && observation.days.some(day=>day.status!=='unavailable'))return {ok:false,reason:'invalid_observation'};
+ const compared=compareDomToCached(observation,cachedWeek,s.settings,Date.now(),
    (date,time)=>wallTimeToEpoch(date,time,s.settings.timeZone),expected);
+ if(fallback){
+  let added=0;
+  await patchState(latest=>{
+   const saved=latest.week?.weekStart===currentWeek?latest.week:latest.weeks?.[currentWeek];
+   const days=fallback.days.map(day=>{
+    const existing=saved?.days?.find(cached=>cached.date===day.date);
+    if(existing&&existing.kind!=='unknown')return existing;
+    if(day.kind!=='unknown')added++;
+    return day;
+   });
+   if(!added)return null;
+   const week={...fallback,...saved,days,missingDates:days.filter(day=>day.kind==='unknown').map(day=>day.date),warnings:[...(saved?.warnings??[]).filter(warning=>warning.code!=='dom_schedule_provisional'),{code:'dom_schedule_provisional'}]};
+   const cached={...latest.weeks,...(latest.week?{[latest.week.weekStart]:latest.week}:{}),[currentWeek]:week};
+   const starts=Object.keys(cached).sort((a,b)=>Math.abs(Date.parse(a)-Date.now())-Math.abs(Date.parse(b)-Date.now())).slice(0,12);
+   return {week,weeks:Object.fromEntries(starts.map(start=>[start,cached[start]]))};
+  });
+  if(added){
+   await logUI('dom_schedule_loaded',{dayCount:added,trigger:'manual_wfm_visit'});
+   await updateBadge();await broadcast();
+  }
+ }
  const pending=compared.status==='changed';
  const samePending=s.domChange?.fingerprint===id;
  if(pending&&!samePending){

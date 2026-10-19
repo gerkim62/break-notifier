@@ -4,7 +4,7 @@ import {pathToFileURL} from 'node:url';
 import assert from 'node:assert/strict';
 import {fixture,NOW} from './browser-harness.mjs';
 const report={checks:[]},listeners=[],data={local:{wfm_companion_state_v1:fixture()},session:{}},requests=[],reloads=[],updates=[],windowUpdates=[],tabMessages=[],alarmListeners=[];
-const originalNow=Date.now;let clock=Date.parse(NOW);Date.now=()=>clock;
+const originalNow=Date.now,originalFetch=globalThis.fetch;let clock=Date.parse(NOW);Date.now=()=>clock;
 const event={addListener(){}};
 const area=name=>({get:async key=>Array.isArray(key)?Object.fromEntries(key.map(k=>[k,data[name][k]])):{[key]:data[name][key]},set:async patch=>Object.assign(data[name],structuredClone(patch)),remove:async keys=>{for(const k of keys)delete data[name][k];}});
 globalThis.chrome={storage:{local:area('local'),session:area('session')},runtime:{getManifest:()=>({version:'0.4.18'}),onMessage:{addListener:fn=>listeners.push(fn)},onInstalled:event,onStartup:event},action:{setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},alarms:{clear:async()=>{},create:async()=>{},onAlarm:{addListener:fn=>alarmListeners.push(fn)}},tabs:{query:async()=>[{id:42,url:'http://svdt1ipccwfm09:8070/wfm/Agent?#Schedule;view=MY_SCHEDULE',active:false,windowId:7}],sendMessage:async(id,msg)=>{tabMessages.push({id,msg});},update:async(id,opts)=>{updates.push({id,opts});},reload:async id=>{reloads.push(id);}},windows:{update:async(id,opts)=>{windowUpdates.push({id,opts});}}};
@@ -81,6 +81,23 @@ try{
  assert.equal(offHold.reason,'outside_shift');
  report.checks.push('Personal alarms trigger alert ring x min before, ear change uses toast, and hold timer operates without notifications');
  report.checks.push('Ear change and hold timer only disturb during active shift hours, never before, after or off');
+ // Exercise Login with the real RPC reader rather than the schedule fixture.
+ let rpcBody='//EX[2,1,["com.google.gwt.user.client.rpc.IncompatibleRemoteServiceException/3936916533","private server message"],0,7]';
+ globalThis.fetch=async url=>({ok:true,status:200,url:String(url),text:async()=>rpcBody});
+ const realSource=(await readFile('extension/background.mjs','utf8')).replace(/from '(\.\/[^']+)'/g,(_,path)=>'from '+JSON.stringify(pathToFileURL(resolve('extension',path)).href));
+ await import('data:text/javascript;base64,'+Buffer.from(realSource).toString('base64'));
+ const realHandle=listeners.at(-1),beforeLogin=updates.length,previousWeek=structuredClone(data.local.wfm_companion_state_v1.week),previousUpdated=data.local.wfm_companion_state_v1.lastUpdated;
+ const rpcLogin=await new Promise(resolve=>realHandle({type:'WFM_LOGIN_CHECK'},{},resolve));
+ assert.equal(rpcLogin.reason,'rpc_error');assert.equal(updates.length,beforeLogin);
+ assert.deepEqual(data.local.wfm_companion_state_v1.week,previousWeek);assert.equal(data.local.wfm_companion_state_v1.lastUpdated,previousUpdated);
+ const exported=await new Promise(resolve=>realHandle({type:'WFM_EXPORT_DIAGNOSTICS'},{},resolve));
+ assert.ok(exported.report.runs.at(-1).events.some(e=>e.code==='rpc_exception'&&e.reason==='rpc_contract_mismatch'));
+ assert.equal(JSON.stringify(exported).includes('private server message'),false);
+ report.checks.push('RPC session-check failure preserves cache and timestamps, exports a safe category, and does not navigate to login');
+ rpcBody='//EX[1,["com.genesyslabs.shared.exception.SessionExpiredException/123"],0,7]';
+ const expired=await new Promise(resolve=>realHandle({type:'WFM_LOGIN_CHECK'},{},resolve));
+ assert.equal(expired.reason,'not_authenticated');assert.ok(updates.slice(beforeLogin).some(update=>update.opts.url==='http://svdt1ipccwfm09:8070/wfm/login'));
+ report.checks.push('A confirmed expired session still opens WFM login');
  for(const check of report.checks)console.log('PASS '+check);
 }catch(e){report.failure=e.stack;console.error(e);process.exitCode=1;}
-finally{Date.now=originalNow;await writeFile('verification/background-report.json',JSON.stringify(report,null,2));}
+finally{Date.now=originalNow;globalThis.fetch=originalFetch;await writeFile('verification/background-report.json',JSON.stringify(report,null,2));}

@@ -65,6 +65,8 @@ function header(variant){
  let label='Not refreshed yet';
  if(signout)label='Signed out';
  else if(updated)label='Updated '+stamp(updated,localDate(updated,settings().timeZone)===today()?{}:{month:'short',day:'numeric'});
+ const domDay=dayForDate(selectedWeek(),selectedDate??today());
+ if(domDay?.source==='dom')label='Loaded from WFM page';
  updateFirstText(badge,label+' ');
  if(badge){const textNode=[...badge.childNodes].find(node=>node.nodeType===Node.TEXT_NODE);if(textNode)textNode.replaceWith(h('span','update-label',label));}
  const refresh=$('.hd .btn',app);
@@ -87,6 +89,7 @@ function header(variant){
   const popup=h('div','schedule-info-popover');popup.id='schedule-info-popover';popup.hidden=!lastInfoOpen;
   popup.setAttribute('role','status');popup.append(h('strong','','Schedule details'));
   popup.append(h('div','',updated?`Last updated: ${stamp(updated,{month:'short',day:'numeric'})}`:'Not refreshed yet'));
+  if(domDay?.source==='dom')popup.append(h('div','','Loaded from the WFM page. Full schedule has not been confirmed.'));
   const freshness=scheduleFreshness(state,selectedDate??today());
   popup.append(h('div','',freshness.status==='confirmed'?'Confirmed for this shift.':freshness.status==='stale'?'Saved schedule has not been confirmed.':freshness.status==='provisional'?(freshness.bounds?'Future schedule is provisional.':'No shift has been confirmed for this day.'):freshness.status==='archived'?'Saved schedule for a completed day.':freshness.status==='day-off'?'Day off checked today.':'Schedule has not been loaded.'));
   if(state?.lastError?.reason)popup.append(h('div','',`Last refresh: ${errorMessage(state.lastError)}`));
@@ -606,7 +609,7 @@ function renderSettings(){
  highlightChip(s.leadMinutes);
  preview(s.leadMinutes);
  for(const button of chips)button.onclick=async()=>{const minutes=Number(button.dataset.lead);chips.forEach(b=>b.disabled=true);highlightChip(minutes);preview(minutes);await settingChange({leadMinutes:minutes});highlightChip(settings().leadMinutes);preview(settings().leadMinutes);chips.forEach(b=>b.disabled=false);};
- for(const [text,key,meta,symbol,color,rgb] of [['Page-edge alert ring','showRing','Glowing border around the page','ring','accent','143,163,255'],['Breaks & meals','alertBreaks','Tea breaks and lunch','cup','amber','246,189,75'],['Coaching & meetings','alertExceptions','Coaching sessions and meetings','people','violet','182,156,255'],['Shift start','alertShiftStart','Heads-up before your shift begins','flag','green','91,214,164'],['Shift end','alertShiftEnd','Heads-up before your shift ends','flag','green','91,214,164'],['Queue-switch toast','queueSwitchToast','Pop-up when your queue changes','queue','sky','108,196,240']]){
+ for(const [text,key,meta,symbol,color,rgb] of [['Page-edge alert ring','showRing','Glowing border around the page','ring','accent','143,163,255'],['Breaks & meals','alertBreaks','Before breaks start and end','cup','amber','246,189,75'],['Coaching & meetings','alertExceptions','Coaching sessions and meetings','people','violet','182,156,255'],['Shift start','alertShiftStart','Heads-up before your shift begins','flag','green','91,214,164'],['Shift end','alertShiftEnd','Heads-up before your shift ends','flag','green','91,214,164'],['Queue-switch toast','queueSwitchToast','Pop-up when your queue changes','queue','sky','108,196,240']]){
   const row=h('div','opt');row.innerHTML=`<div class="tile" style="--c:var(--${color});--tint:rgba(${rgb},.14)">${icon(symbol,16)}</div><div class="t"><div class="name"></div><div class="meta"></div></div><button class="sw" type="button" role="switch"><i></i></button>`;
   $('.name',row).textContent=text;$('.meta',row).textContent=meta;
   const toggle=$('.sw',row);toggle.dataset.setting=key;toggle.setAttribute('aria-label',text);toggle.setAttribute('aria-checked',String(Boolean(s[key])));

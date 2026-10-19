@@ -6,8 +6,11 @@ const toast=JSON.parse(await readFile('verification/toast-report.json','utf8'));
 const polish=JSON.parse(await readFile('verification/polish-report.json','utf8'));
 const refresh=JSON.parse(await readFile('verification/refresh-report.json','utf8'));
 const theme=JSON.parse(await readFile('verification/theme-report.json','utf8'));
-for(const report of [ui,snooze,background,toast,polish,refresh,theme])if(report.failure||report.errors?.length)throw Error('Verification contains failures');
-const checks=[...ui.checks,...snooze.checks,...background.checks,...toast.checks,...polish.checks,...refresh.checks,...theme.checks];
+const discovery=JSON.parse(await readFile('verification/dom-discovery-report.json','utf8'));
+const breaks=JSON.parse(await readFile('verification/break-alerts-report.json','utf8'));
+const overlayState=JSON.parse(await readFile('verification/overlay-state-report.json','utf8'));
+for(const report of [ui,snooze,background,toast,polish,refresh,theme,discovery,breaks,overlayState])if(report.failure||report.errors?.length)throw Error('Verification contains failures');
+const checks=[...ui.checks,...snooze.checks,...background.checks,...toast.checks,...polish.checks,...refresh.checks,...theme.checks,...discovery.checks,...breaks.checks,...overlayState.checks];
 const names=Object.fromEntries(ui.visual.map(v=>[v.name,v.name]));
 const esc=s=>s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 const html=`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>WFM v0.4.31 verification</title><style>
