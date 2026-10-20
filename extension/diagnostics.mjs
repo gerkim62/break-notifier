@@ -1,4 +1,6 @@
-// Bounded, privacy-first diagnostics. No request/response bodies or personal identifiers.
+// Bounded diagnostics with failed RPC responses and credential redaction.
+import {safeRpcExceptionType,redactRpcDiagnosticText} from './rpc-exception.mjs';
+import {profile} from './wfm-wire-profile.mjs';
 export const DIAGNOSTICS_VERSION = 1;
 const MAX_RUNS = 12;
 const MAX_EVENTS = 400;
@@ -12,11 +14,26 @@ export function createDiagnosticRun({date,source,version='unknown',now=()=>Date.
   const log=(stage,code,fields={})=>{
     if(events.length>=MAX_EVENTS){run.droppedEventCount++;return;}
     const clean={};
-    // Explicit allowlist only. Never copy arbitrary exception objects or server payloads.
+    // Failed RPC error text is included explicitly; successful payloads and
+    // credential headers are not collected.
     for(const [key,val] of Object.entries(fields)) {
-      if(['method','endpoint','phase','reason','rpcStatus','resultKind','parserType','message','result','field'].includes(key))clean[key]=scrub(val);
+      if(key==='exceptionType'){const type=safeRpcExceptionType(val);if(val==='unrecognized'||type)clean[key]=type??val;}
+      else if(key==='exceptionTypes'&&Array.isArray(val))clean[key]=[...new Set(val.map(safeRpcExceptionType).filter(Boolean))].slice(0,8);
+      else if(key==='exceptionMessages'&&Array.isArray(val))clean[key]=val.filter(value=>typeof value==='string').slice(0,16).map(value=>redactRpcDiagnosticText(value,4096));
+      else if(key==='rpcExceptionResponse'&&typeof val==='string'&&val.startsWith('//EX'))clean[key]=redactRpcDiagnosticText(val);
+      else if(key==='rpcDecode'&&['decoded','invalid_json','invalid_envelope','missing_string_table'].includes(val))clean[key]=val;
+      else if(key==='authenticationHint'&&['session_expired','session_invalid','session_missing','not_authenticated','login_required','none','unavailable'].includes(val))clean[key]=val;
+      else if(key==='responseMime'&&['html','gwt_rpc','json','plain','other','missing'].includes(val))clean[key]=val;
+      else if(key==='finalEndpoint'&&['dispatch','schedule','login','other','unknown'].includes(val))clean[key]=val;
+      else if(key==='credentialsMode'&&val==='include')clean[key]=val;
+      else if(key==='modulePath'&&val==='/wfm/agent/')clean[key]=val;
+      else if(key==='wireProfile'&&val==='wfm_852_captured')clean[key]=val;
+      else if(key==='wirePermutation'&&val===profile.permutation)clean[key]=val;
+      else if(key==='serializationPolicy'&&[profile.checkSessionBody.split('|')[4],profile.scheduleStrings[1]].includes(val))clean[key]=val;
+      else if(['method','endpoint','phase','reason','rpcStatus','resultKind','parserType','message','result','field'].includes(key))clean[key]=scrub(val);
       else if(['httpStatus','elapsedMs','bytes','dayCount','scheduledDays','offDays','unknownDays','breakCount','activities','missingDates','source','fieldCount','dayIndex','nativeStateType','nativeStateId','nativeDayType','nativeExceptionTypeId','nativeTimeOffTypeId','warningCount','nativeStateCount','coverageCount','eventCount','unnamedEventCount','workEventCount','incompleteNativeDays'].includes(key)&&typeof val==='number'&&Number.isFinite(val))clean[key]=val;
-      else if(['authenticated','ok','timedOut','responseHtml','identityMatches'].includes(key)&&typeof val==='boolean')clean[key]=val;
+      else if(['rpcVersion','rpcStreamVersion','rpcFlags','requestBytes','stringCount'].includes(key)&&typeof val==='number'&&Number.isSafeInteger(val))clean[key]=val;
+      else if(['authenticated','ok','timedOut','responseHtml','identityMatches','redirected','responseOriginMatches','responseUrlKnown','hasAgentIdentity','exceptionReferenceValid','rpcExceptionResponseTruncated'].includes(key)&&typeof val==='boolean')clean[key]=val;
     }
     events.push({ms:Math.max(0,now()-started),stage:scrub(stage),code:scrub(code),...clean});
   };

@@ -1,4 +1,8 @@
-# WFM Schedule Companion v0.4.35
+# WFM Schedule Companion v0.4.37
+
+RPC diagnostics include the failed response in `rpcExceptionResponse` and the server's decoded explanations in `exceptionMessages`, with complete exception namespaces and numeric error codes. Message context is retained; passwords, session/token assignments and authorization/cookie values are redacted. Failed responses are bounded at 8 KiB with `rpcExceptionResponseTruncated`; up to 16 messages retain 4 KiB each. Successful session/schedule payloads and request credentials are not collected. These diagnostics also retain exception types, decoding status, stream metadata, authentication hints, wire-profile fingerprints, content-type and redirect/origin metadata. Hints alone do not trigger login.
+
+To investigate a failure, reload this version, click Refresh once and export diagnostics. Check `extensionVersion` is `0.4.37` and the latest run includes the new fields. Older saved runs retain their earlier log format.
 
 The page overlay safely handles null or missing background state during startup, resize and storage removal. It stays hidden until state is available, then resumes normal reminders. Null optional snooze/dismissal fields are accepted. Failed or throwing state requests no longer crash rendering, and an empty response preserves already-loaded state.
 
@@ -30,7 +34,7 @@ Snooze now settles the island's initial width before pointer interaction. Enter/
 
 Next week selects Monday; previous week selects Sunday. Entering the current week from either direction selects today. You can then choose any day; data updates preserve that choice. Today, arrow keys and swipes also update the selected day. Cached weeks appear immediately, and due or missing weeks load on opening. Refresh retries or updates the selected week and retains today's alert schedule. Up to 12 weeks are saved.
 
-Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.35 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated content scripts.
+Load this folder using **Load unpacked** in Chrome/Edge's developer extensions page, or extract the v0.4.37 flat ZIP first. Reload an existing installation after replacing its files, then reload tabs so they receive the updated content scripts.
 
 Verification is in the workspace's `verification/` folder. Real Chrome renders the production popup/content scripts using fixture schedules and browser APIs. A footer comparison checks its appearance against the original ZIP's popup. Long-schedule checks verify whole-page scrolling, access to the final activity, countdown alignment, and preserved scroll position. Other checks cover the day picker, journey, movable ring, week navigation/cache, HTML settings presets/switches and diagnostics, themes, and mouse/keyboard snooze. Authenticated WFM network access was not available in this environment.
 

@@ -6,7 +6,7 @@
   "scripts": {
     "design": "node scripts/prepare-design.mjs",
     "test": "node scripts/verify-transport.mjs && node scripts/verify-dom-discovery.mjs && node scripts/verify-break-alerts.mjs && node scripts/verify-overlay-state.mjs && node scripts/verify-ui.mjs && node scripts/verify-snooze.mjs && node scripts/verify-background.mjs && node scripts/verify-toast.mjs && node scripts/verify-polish.mjs && node scripts/verify-refresh.mjs && node scripts/verify-theme.mjs && node scripts/report.mjs",
-    "package": "powershell -NoProfile -Command \"Compress-Archive -Path extension/* -DestinationPath wfm-schedule-companion-v0.4.35-flat.zip -Force\""
+    "package": "powershell -NoProfile -Command \"Compress-Archive -Path extension/* -DestinationPath wfm-schedule-companion-v0.4.37-flat.zip -Force\""
   },
   "keywords": [],
   "author": "",

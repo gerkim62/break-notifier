@@ -92,7 +92,13 @@ try{
  assert.deepEqual(data.local.wfm_companion_state_v1.week,previousWeek);assert.equal(data.local.wfm_companion_state_v1.lastUpdated,previousUpdated);
  const exported=await new Promise(resolve=>realHandle({type:'WFM_EXPORT_DIAGNOSTICS'},{},resolve));
  assert.ok(exported.report.runs.at(-1).events.some(e=>e.code==='rpc_exception'&&e.reason==='rpc_contract_mismatch'));
- assert.equal(JSON.stringify(exported).includes('private server message'),false);
+ const exceptionEvent=exported.report.runs.at(-1).events.find(e=>e.code==='rpc_exception');
+ assert.equal(exceptionEvent.exceptionType,'com.google.gwt.user.client.rpc.IncompatibleRemoteServiceException');
+ assert.equal(exceptionEvent.rpcDecode,'decoded');assert.equal(exceptionEvent.authenticationHint,'none');
+ const requestEvent=exported.report.runs.at(-1).events.find(e=>e.code==='request_started');
+ assert.equal(requestEvent.credentialsMode,'include');assert.ok(requestEvent.serializationPolicy);
+ assert.equal(exceptionEvent.exceptionMessages[0],'private server message');
+ assert.ok(exceptionEvent.rpcExceptionResponse.includes('private server message'));
  report.checks.push('RPC session-check failure preserves cache and timestamps, exports a safe category, and does not navigate to login');
  rpcBody='//EX[1,["com.genesyslabs.shared.exception.SessionExpiredException/123"],0,7]';
  const expired=await new Promise(resolve=>realHandle({type:'WFM_LOGIN_CHECK'},{},resolve));

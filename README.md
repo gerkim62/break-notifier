@@ -1,5 +1,9 @@
 # Break notifier / WFM Schedule Companion
 
+v0.4.37 includes the actual failed RPC response (`rpcExceptionResponse`) and decoded server explanations (`exceptionMessages`). Full exception namespaces, numeric error codes and message context are retained. Passwords, session/token assignments and authorization/cookie values are redacted. Error responses are bounded at 8 KiB with a truncation flag; successful schedule/session payloads and request credentials are not collected. Reload this version, click Refresh and export a fresh run to capture the server's explanation.
+
+v0.4.36 expands RPC diagnostics so a failed session check can be investigated from an export. Errors include the exception class, serialized exception type identifiers, decoding status, stream metadata and fixed authentication hints. Requests include the captured public build/policy fingerprints and credential mode; responses include a content-type category, redirect status, endpoint category and whether the final origin matches. Session decoding reports structure and identity-presence checks. Browser family is now supplied by the background worker. Exports omit server messages, request/response bodies, cookies, credentials, hostnames and account identifiers. These logs diagnose the RPC rejection; they do not themselves fix its underlying cause.
+
 v0.4.35 fixes an overlay startup crash when a repaint runs before background state arrives. Null state and null optional snooze/dismissal maps are safe, the overlay stays hidden while state is absent, and normal alerts resume after a valid state update. Failed or throwing state requests do not crash the drawing timer, and an empty response does not discard already-loaded state.
 
 v0.4.34 adds reminders before breaks and meals end, using the existing lead time and Breaks & meals switch. The page alert says, for example, Tea Break 1 ends in 05:00. End reminders have separate dismissal IDs from start reminders, honor snooze, and use the original interval end through overlaps and overnight breaks. DOM schedules also recognize explicit English labels such as Tea Break 1, Lunch Break and Meal for display and reminders, without inventing native state IDs; other labels stay unclassified.
@@ -26,7 +30,7 @@ The session-expired toast includes a **Log in** action. Toasts pause dismissal w
 
 Choose **System, Light or Dark** in **Settings → Display → Theme**. The preference is saved and applies to the popup, snooze controls, queue toasts and WFM banner. System follows OS appearance changes; explicit choices override it. Light mode uses readable completed-event text, selected dates, switch states, reminder controls and diagnostic actions. Theme changes do not fetch WFM or recolor the website under extension overlays.
 
-- Install: extract `wfm-schedule-companion-v0.4.35-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
+- Install: extract `wfm-schedule-companion-v0.4.37-flat.zip`, then load its folder as an unpacked Chrome/Edge extension.
 - Screenshots and pixel comparisons: [`verification/index.html`](verification/index.html).
 - Source: [`extension/popup.js`](extension/popup.js), [`extension/schedule-components.mjs`](extension/schedule-components.mjs), [`extension/schedule-components.css`](extension/schedule-components.css), [`extension/ring.js`](extension/ring.js), [`extension/background.mjs`](extension/background.mjs).
 

@@ -295,7 +295,7 @@ async function handleMessage(message,sender){
  if(type==='WFM_EXPORT_DIAGNOSTICS'){
   await diagQueue;let previous=savedRuns,ui=[];
   try{const stored=await chrome.storage.session.get([DIAG_KEY,UI_DIAG_KEY]);if(Array.isArray(stored[DIAG_KEY]))previous=stored[DIAG_KEY];if(Array.isArray(stored[UI_DIAG_KEY]))ui=stored[UI_DIAG_KEY];}catch{}
-  return {ok:true,report:{...diagnosticExport(previous,{extensionVersion:VERSION}),companionEvents:ui}};
+  return {ok:true,report:{...diagnosticExport(previous,{extensionVersion:VERSION,userAgent:globalThis.navigator?.userAgent??''}),companionEvents:ui}};
  }
  if(type==='WFM_CLEAR_DIAGNOSTICS'){
   await diagQueue;savedRuns.splice(0,savedRuns.length);
